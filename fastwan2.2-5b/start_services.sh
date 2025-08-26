@@ -100,6 +100,19 @@ fi
 deactivate
 echo "[services] ComfyUI setup complete."
 
+# Start API wrapper
+echo "[services] Starting FastWAN API wrapper..."
+API_PID=""
+if [ -f "/workspace/api_wrapper.py" ]; then
+  cd /workspace
+  "${VENV_COMFY}/bin/pip" install -r api_requirements.txt || echo "[services] Warning: API requirements install failed."
+  "${VENV_COMFY}/bin/python" api_wrapper.py &
+  API_PID=$!
+  echo "[services] API wrapper PID: ${API_PID}"
+else
+  echo "[services] API wrapper not found at /workspace/api_wrapper.py"
+fi
+
 JUPYTER_PID=""
 if [[ "${ENABLE_JUPYTER:-false}" == "true" ]]; then
   echo "[services] Starting JupyterLab..."
@@ -130,11 +143,13 @@ echo "[services] Caddy PID: ${CADDY_PID}"
 PIDS_TO_KILL=()
 [[ -n "${TAILSCALED_PID}" ]] && PIDS_TO_KILL+=("${TAILSCALED_PID}")
 [[ -n "${COMFY_PID}"     ]] && PIDS_TO_KILL+=("${COMFY_PID}")
+[[ -n "${API_PID}"       ]] && PIDS_TO_KILL+=("${API_PID}")
 [[ -n "${JUPYTER_PID}"   ]] && PIDS_TO_KILL+=("${JUPYTER_PID}")
 [[ -n "${CADDY_PID}"     ]] && PIDS_TO_KILL+=("${CADDY_PID}")
 
 PIDS_TO_WAIT=()
 [[ -n "${COMFY_PID}"   ]] && PIDS_TO_WAIT+=("${COMFY_PID}")
+[[ -n "${API_PID}"     ]] && PIDS_TO_WAIT+=("${API_PID}")
 [[ -n "${JUPYTER_PID}" ]] && PIDS_TO_WAIT+=("${JUPYTER_PID}")
 if [[ ${#PIDS_TO_WAIT[@]} -eq 0 && -n "${CADDY_PID}" ]]; then
   PIDS_TO_WAIT+=("${CADDY_PID}")

@@ -101,6 +101,9 @@ COPY --from=builder /workspace/ComfyUI /workspace/ComfyUI
 WORKDIR /workspace
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY start_services.sh /usr/local/bin/start_services.sh
+COPY workflow_api.json /workspace/workflow_api.json
+COPY api_wrapper.py /workspace/api_wrapper.py
+COPY api_requirements.txt /workspace/api_requirements.txt
 RUN chmod +x /usr/local/bin/start_services.sh
 
 # Set environment variables optimized for RTX 4090
@@ -114,8 +117,8 @@ ENV PATH="${VENV_PATH}/bin:${PATH}" \
     COMFY_DIR="/workspace/ComfyUI" \
     COMFY_LAUNCH_ARGS="--listen 0.0.0.0 --port 8188 --disable-auto-launch --preview-method auto"
 
-# Expose ComfyUI port
-EXPOSE 8188
+# Expose ComfyUI and API ports
+EXPOSE 8188 8189
 
 # Health check to ensure ComfyUI is running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

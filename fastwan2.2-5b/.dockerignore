@@ -3,5 +3,9 @@
 
 # Re-include only what we actually need in the image
 !Dockerfile
+!Dockerfile.consolidated
 !Caddyfile
 !start_services.sh
+!workflow_api.json
+!api_wrapper.py
+!api_requirements.txt

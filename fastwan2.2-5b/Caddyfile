@@ -38,6 +38,20 @@
 		file_server browse
 	}
 
+	# ── FastWAN API wrapper under /generate/ ──────────────────────────────────
+	handle /generate* {
+		reverse_proxy 127.0.0.1:8189
+	}
+	handle /status/* {
+		reverse_proxy 127.0.0.1:8189
+	}
+	handle /download/* {
+		reverse_proxy 127.0.0.1:8189
+	}
+	handle /jobs* {
+		reverse_proxy 127.0.0.1:8189
+	}
+
 	# ── JupyterLab under /jupyter/ (Jupyter is started with base_url=/jupyter/) ─
 	handle /jupyter/* {
 		reverse_proxy 127.0.0.1:8888
