@@ -1,0 +1,50 @@
+{
+	# We terminate inside Tailscale; no public HTTPS here.
+	auto_https off
+}
+
+:80 {
+	encode gzip zstd
+
+	# ── ComfyUI UI under /comfyui (prefix stripped before proxy) ───────────────
+	handle_path /comfyui/* {
+		reverse_proxy 127.0.0.1:8188
+	}
+
+	# ── ComfyUI APIs & WebSocket (no prefix strip) ─────────────────────────────
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8188
+	}
+	# ComfyUI uses a websocket at /ws for live updates.
+	handle /ws/* {
+		reverse_proxy 127.0.0.1:8188
+	}
+
+	# ── Static model folders proxied to ComfyUI (matches your old config) ──────
+	handle /loras/* {
+		reverse_proxy 127.0.0.1:8188
+	}
+	handle /loras_static/* {
+		reverse_proxy 127.0.0.1:8188
+	}
+	handle /checkpoints_static/* {
+		reverse_proxy 127.0.0.1:8188
+	}
+
+	# Optional: direct static file browse of the loras directory, independent of
+	# ComfyUI. Visit /_loras/… if you want a raw listing/download.
+	handle_path /_loras/* {
+		root * /workspace/ComfyUI/models/loras
+		file_server browse
+	}
+
+	# ── JupyterLab under /jupyter/ (Jupyter is started with base_url=/jupyter/) ─
+	handle /jupyter/* {
+		reverse_proxy 127.0.0.1:8888
+	}
+
+	# Default: send anything else to ComfyUI root (useful for top‑level assets)
+	handle /* {
+		reverse_proxy 127.0.0.1:8188
+	}
+}
