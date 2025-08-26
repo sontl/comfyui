@@ -28,11 +28,28 @@ This Docker image provides a complete, ready-to-use ComfyUI installation with Fa
 ### 1. Build the Docker Image
 
 ```bash
-cd /Users/sontl/workspace/runpod/comfyui/fastwan2.2-5b
-docker build -f Dockerfile.consolidated -t fastwan-comfyui:latest .
+# from this directory: fastwan2.2-5b/
+docker build -f Dockerfile.consolidated -t ghcr.io/sontl/fastwan-comfyui:latest .
 ```
 
-**Note**: Initial build will take 30-60 minutes due to model downloads (~20GB total).
+**Notes**
+
+- Initial build can take 30–60 minutes due to model downloads (~20GB total).
+- If you omit a registry/namespace (e.g., `-t fastwan-comfyui:latest`), Docker will default to `docker.io/library/...`. You can retag later:
+
+```bash
+docker tag fastwan-comfyui:latest ghcr.io/sontl/fastwan-comfyui:latest
+```
+
+### 1b. Publish to GitHub Container Registry (GHCR)
+
+```bash
+# Login once (CR_PAT needs write:packages)
+echo "$CR_PAT" | docker login ghcr.io -u sontl --password-stdin
+
+# Push
+docker push ghcr.io/sontl/fastwan-comfyui:latest
+```
 
 ### 2. Run the Container
 
@@ -43,7 +60,7 @@ docker run -d \
   --gpus all \
   -p 8188:8188 \
   -v $(pwd)/workspace:/workspace/persistent \
-  fastwan-comfyui:latest
+  ghcr.io/sontl/fastwan-comfyui:latest
 ```
 
 #### Advanced Run (with Tailscale)
@@ -55,7 +72,7 @@ docker run -d \
   -e TAILSCALE_AUTHKEY="your-tailscale-auth-key" \
   -e RUNPOD_POD_HOSTNAME="fastwan-gpu-$(date +%s)" \
   -v $(pwd)/workspace:/workspace/persistent \
-  fastwan-comfyui:latest
+  ghcr.io/sontl/fastwan-comfyui:latest
 ```
 
 #### With Jupyter Lab
@@ -67,7 +84,7 @@ docker run -d \
   -p 8888:8888 \
   -e ENABLE_JUPYTER=true \
   -v $(pwd)/workspace:/workspace/persistent \
-  fastwan-comfyui:latest
+  ghcr.io/sontl/fastwan-comfyui:latest
 ```
 
 ### 3. Access ComfyUI
@@ -133,7 +150,7 @@ docker build --no-cache -f Dockerfile.consolidated -t fastwan-comfyui:latest .
 docker logs fastwan-comfyui
 
 # Interactive debugging
-docker run -it --rm --gpus all fastwan-comfyui:latest /bin/bash
+docker run -it --rm --gpus all ghcr.io/sontl/fastwan-comfyui:latest /bin/bash
 ```
 
 ## Development
