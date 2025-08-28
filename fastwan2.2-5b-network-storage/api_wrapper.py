@@ -174,12 +174,28 @@ def wait_for_completion(prompt_id: str, job_id: str):
 def find_output_video(job_id: str) -> Optional[str]:
     """Find the generated video file"""
     output_path = Path(OUTPUT_DIR)
+    
+    # The filename pattern is set in the workflow as "FastWan/api_{job_id}"
+    # ComfyUI typically saves to subdirectories based on the prefix
+    fastwan_dir = output_path / "FastWan"
+    
+    # Look for video files with the job ID in both root and FastWan subdirectory
+    search_paths = [output_path, fastwan_dir]
     pattern = f"api_{job_id}"
     
-    # Look for video files with the job ID
-    for ext in [".mp4", ".avi", ".mov", ".webm"]:
-        for file_path in output_path.glob(f"*{pattern}*{ext}"):
-            return str(file_path)
+    for search_path in search_paths:
+        if not search_path.exists():
+            continue
+            
+        # Look for video files with the job ID
+        for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv"]:
+            # Try exact pattern match first
+            for file_path in search_path.glob(f"*{pattern}*{ext}"):
+                return str(file_path)
+            
+            # Also try without the "api_" prefix in case ComfyUI strips it
+            for file_path in search_path.glob(f"*{job_id}*{ext}"):
+                return str(file_path)
     
     return None
 
@@ -218,17 +234,26 @@ async def get_job_status(job_id: str):
     if job_id not in job_status:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    status = job_status[job_id]
+    status = job_status[job_id].copy()
     
     # If completed, try to find the output file
     if status["status"] == "completed":
         video_path = find_output_video(job_id)
-        if video_path:
+        if video_path and os.path.exists(video_path):
             status["video_ready"] = True
             status["download_url"] = f"/download/{job_id}"
+            status["video_path"] = video_path
         else:
             status["video_ready"] = False
             status["message"] = "Video generation completed but file not found"
+            # Give it a moment and try again - sometimes there's a delay
+            await asyncio.sleep(1)
+            video_path = find_output_video(job_id)
+            if video_path and os.path.exists(video_path):
+                status["video_ready"] = True
+                status["download_url"] = f"/download/{job_id}"
+                status["video_path"] = video_path
+                status["message"] = "Video found after retry"
     
     return status
 
@@ -238,17 +263,34 @@ async def download_video(job_id: str):
     if job_id not in job_status:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    if job_status[job_id]["status"] != "completed":
-        raise HTTPException(status_code=400, detail="Video not ready")
+    status = job_status[job_id]["status"]
+    if status != "completed":
+        raise HTTPException(status_code=400, detail=f"Video not ready. Current status: {status}")
     
     video_path = find_output_video(job_id)
-    if not video_path or not os.path.exists(video_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
+    if not video_path:
+        raise HTTPException(status_code=404, detail="Video file not found in output directory")
     
-    filename = f"generated_video_{job_id}.mp4"
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail=f"Video file not found at path: {video_path}")
+    
+    # Determine the actual file extension
+    file_ext = Path(video_path).suffix or ".mp4"
+    filename = f"generated_video_{job_id}{file_ext}"
+    
+    # Determine media type based on extension
+    media_type_map = {
+        ".mp4": "video/mp4",
+        ".avi": "video/x-msvideo", 
+        ".mov": "video/quicktime",
+        ".webm": "video/webm",
+        ".mkv": "video/x-matroska"
+    }
+    media_type = media_type_map.get(file_ext.lower(), "video/mp4")
+    
     return FileResponse(
         video_path,
-        media_type="video/mp4",
+        media_type=media_type,
         filename=filename
     )
 
@@ -256,6 +298,55 @@ async def download_video(job_id: str):
 async def list_jobs():
     """List all jobs"""
     return {"jobs": job_status}
+
+@app.get("/debug/files")
+async def debug_files():
+    """Debug endpoint to list output directory contents"""
+    output_path = Path(OUTPUT_DIR)
+    files = []
+    
+    if output_path.exists():
+        # List files in root output directory
+        for item in output_path.iterdir():
+            if item.is_file():
+                files.append({"path": str(item), "name": item.name, "location": "root"})
+            elif item.is_dir():
+                # List files in subdirectories
+                for subitem in item.rglob("*"):
+                    if subitem.is_file():
+                        files.append({
+                            "path": str(subitem), 
+                            "name": subitem.name, 
+                            "location": str(subitem.parent.relative_to(output_path))
+                        })
+    
+    return {"output_dir": str(output_path), "files": files}
+
+@app.get("/debug/job/{job_id}")
+async def debug_job(job_id: str):
+    """Debug endpoint for specific job"""
+    if job_id not in job_status:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    status = job_status[job_id].copy()
+    
+    # Try to find the video file
+    video_path = find_output_video(job_id)
+    status["searched_video_path"] = video_path
+    status["video_exists"] = video_path and os.path.exists(video_path) if video_path else False
+    
+    # List all files that might match
+    output_path = Path(OUTPUT_DIR)
+    potential_files = []
+    
+    if output_path.exists():
+        for item in output_path.rglob("*"):
+            if item.is_file() and job_id in item.name:
+                potential_files.append(str(item))
+    
+    status["potential_files"] = potential_files
+    
+    return status
 
 @app.delete("/jobs/{job_id}")
 async def delete_job(job_id: str):

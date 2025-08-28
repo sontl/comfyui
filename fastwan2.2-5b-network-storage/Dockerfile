@@ -51,6 +51,29 @@ RUN . ${VENV_PATH}/bin/activate && \
         requests==2.31.0 \
         pydantic==2.5.0
 
+# --- ComfyUI Installation ---------------------------------------------------
+WORKDIR /workspace
+RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ComfyUI && \
+    cd ComfyUI && \
+    . ${VENV_PATH}/bin/activate && \
+    pip install --no-cache-dir -r requirements.txt && \
+    # Create model directories
+    mkdir -p models/diffusion_models models/text_encoders models/vae models/loras && \
+    # Install FastWAN custom node (handle missing requirements gracefully)
+    cd custom_nodes && \
+    git clone --depth 1 https://github.com/FNGarvin/fastwan-moviegen.git fastwan-moviegen || echo "FastWAN custom node clone failed, continuing..." && \
+    if [ -d "fastwan-moviegen" ]; then \
+        cd fastwan-moviegen && \
+        if [ -f "requirements.txt" ]; then \
+            pip install --no-cache-dir -r requirements.txt || echo "FastWAN requirements install failed, continuing..."; \
+        else \
+            echo "No requirements.txt found for FastWAN custom node, skipping..."; \
+        fi; \
+    fi && \
+    # Clean up
+    find ${VENV_PATH} -name '__pycache__' -type d -exec rm -rf {} + && \
+    pip cache purge
+
 ###############################################################################
 # RUNTIME STAGE ###############################################################
 ###############################################################################
@@ -70,9 +93,10 @@ RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends caddy tailscale && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the pre-built Python virtual environment
+# Copy the pre-built Python virtual environment and ComfyUI
 ENV VENV_PATH=/opt/venv
 COPY --from=builder ${VENV_PATH} ${VENV_PATH}
+COPY --from=builder /workspace/ComfyUI /workspace/ComfyUI
 
 # Copy configuration files
 WORKDIR /workspace

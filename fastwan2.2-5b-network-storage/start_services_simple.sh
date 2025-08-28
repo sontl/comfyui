@@ -26,109 +26,140 @@ trap "rm -f /tmp/fastwan.lock" EXIT
 
 log "=== FastWAN 2.2-5B Simple Startup ==="
 
-# Step 1: Setup ComfyUI
-log "Step 1: Setting up ComfyUI..."
-
-# Remove any existing broken directory
-if [ -d "${COMFY_DIR}" ] && [ ! -f "${COMFY_DIR}/main.py" ]; then
-    log "Removing broken ComfyUI directory..."
-    rm -rf "${COMFY_DIR}"
-fi
-
-# Clone ComfyUI if needed
+# Step 1: Verify ComfyUI installation
+log "Step 1: Verifying ComfyUI installation..."
 if [ ! -f "${COMFY_DIR}/main.py" ]; then
-    log "Cloning ComfyUI..."
-    git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "${COMFY_DIR}" || {
-        log "Git clone failed. Trying alternative method..."
-        rm -rf "${COMFY_DIR}"
-        mkdir -p /tmp/comfy_clone
-        cd /tmp/comfy_clone
-        git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git . && {
-            mv /tmp/comfy_clone "${COMFY_DIR}"
-            log "ComfyUI cloned via alternative method."
-        } || {
-            log "FATAL: Cannot clone ComfyUI"
-            exit 1
-        }
-    }
-else
-    log "ComfyUI already exists."
-fi
-
-# Verify ComfyUI
-if [ ! -f "${COMFY_DIR}/main.py" ]; then
-    log "FATAL: ComfyUI main.py not found after setup"
+    log "FATAL: ComfyUI not found. This should be pre-installed in the Docker image."
     exit 1
 fi
 
-cd "${COMFY_DIR}"
-
-# Install requirements
-if [ -f "requirements.txt" ]; then
-    log "Installing ComfyUI requirements..."
-    source "${VENV_COMFY}/bin/activate"
-    pip install --no-cache-dir -r requirements.txt > /dev/null 2>&1 || log "Warning: Requirements install failed"
-    deactivate
+if [ ! -d "${COMFY_DIR}/custom_nodes/fastwan-moviegen" ]; then
+    log "⚠ FastWAN custom node not found. Attempting to install at runtime..."
+    cd "${COMFY_DIR}/custom_nodes"
+    git clone --depth 1 https://github.com/FNGarvin/fastwan-moviegen.git fastwan-moviegen || {
+        log "⚠ Failed to clone FastWAN custom node. ComfyUI will run without it."
+    }
+    if [ -d "fastwan-moviegen" ] && [ -f "fastwan-moviegen/requirements.txt" ]; then
+        source "${VENV_COMFY}/bin/activate"
+        cd fastwan-moviegen
+        pip install --no-cache-dir -r requirements.txt || log "⚠ FastWAN requirements install failed"
+        deactivate
+        cd "${COMFY_DIR}"
+    fi
+else
+    log "✓ FastWAN custom node found."
 fi
 
-# Step 2: Setup custom nodes
-log "Step 2: Setting up FastWAN custom node..."
-if [ ! -d "custom_nodes/fastwan-moviegen" ]; then
-    log "Cloning FastWAN custom node..."
-    git clone --depth 1 https://github.com/FNGarvin/fastwan-moviegen.git custom_nodes/fastwan-moviegen > /dev/null 2>&1 || \
-        log "Warning: Failed to clone FastWAN custom node"
-fi
+log "ComfyUI installation verified."
 
-if [ -d "custom_nodes/fastwan-moviegen" ] && [ -f "custom_nodes/fastwan-moviegen/requirements.txt" ]; then
-    log "Installing FastWAN custom node requirements..."
-    source "${VENV_COMFY}/bin/activate"
-    cd custom_nodes/fastwan-moviegen
-    pip install --no-cache-dir -r requirements.txt > /dev/null 2>&1 || log "Warning: FastWAN requirements install failed"
-    cd "${COMFY_DIR}"
-    deactivate
-fi
+# Step 2: Download models (async parallel downloads)
+log "Step 2: Starting parallel model downloads..."
 
-# Step 3: Download models
-log "Step 3: Downloading models..."
-
-download_model() {
+# Fast async download function with progress tracking
+download_model_async() {
     local url="$1"
     local path="$2"
+    local name="$3"
     local dir=$(dirname "$path")
     
     mkdir -p "$dir"
     
     if [ -f "$path" ]; then
-        log "Model already exists: $(basename "$path")"
+        log "✓ Model already exists: $name"
         return 0
     fi
     
-    log "Downloading $(basename "$path")..."
+    log "⬇ Starting download: $name"
+    
+    # Use aria2c with optimized settings for HuggingFace
     if command -v aria2c > /dev/null 2>&1; then
-        aria2c -x 16 -s 16 --dir="$dir" -o "$(basename "$path")" "$url" > /dev/null 2>&1 || {
-            log "aria2c failed, using curl..."
-            curl -L -o "$path" "$url" > /dev/null 2>&1
+        aria2c \
+            --max-connection-per-server=16 \
+            --split=16 \
+            --min-split-size=1M \
+            --max-concurrent-downloads=4 \
+            --continue=true \
+            --auto-file-renaming=false \
+            --allow-overwrite=true \
+            --retry-wait=3 \
+            --max-tries=5 \
+            --timeout=60 \
+            --connect-timeout=30 \
+            --dir="$dir" \
+            --out="$(basename "$path")" \
+            --user-agent="Mozilla/5.0 (compatible; FastWAN/2.2)" \
+            "$url" 2>/dev/null && {
+            log "✓ Downloaded: $name"
+            return 0
+        } || {
+            log "⚠ aria2c failed for $name, trying curl..."
+            curl -L \
+                --retry 3 \
+                --retry-delay 2 \
+                --connect-timeout 30 \
+                --max-time 1800 \
+                --user-agent "Mozilla/5.0 (compatible; FastWAN/2.2)" \
+                --progress-bar \
+                -o "$path" \
+                "$url" 2>/dev/null && {
+                log "✓ Downloaded: $name (via curl)"
+                return 0
+            } || {
+                log "✗ Failed to download: $name"
+                return 1
+            }
         }
     else
-        curl -L -o "$path" "$url" > /dev/null 2>&1
-    fi
-    
-    if [ -f "$path" ]; then
-        log "Downloaded: $(basename "$path")"
-    else
-        log "Failed to download: $(basename "$path")"
-        return 1
+        curl -L \
+            --retry 3 \
+            --retry-delay 2 \
+            --connect-timeout 30 \
+            --max-time 1800 \
+            --user-agent "Mozilla/5.0 (compatible; FastWAN/2.2)" \
+            --progress-bar \
+            -o "$path" \
+            "$url" 2>/dev/null && {
+            log "✓ Downloaded: $name"
+            return 0
+        } || {
+            log "✗ Failed to download: $name"
+            return 1
+        }
     fi
 }
 
-# Download all models
-download_model "$DIFFUSION_MODEL_URL" "${COMFY_DIR}/models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
-download_model "$TEXT_ENCODER_URL" "${COMFY_DIR}/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
-download_model "$VAE_URL" "${COMFY_DIR}/models/vae/wan2.2_vae.safetensors"
-download_model "$LORA_URL" "${COMFY_DIR}/models/loras/Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors"
+# Start all downloads in parallel
+log "🚀 Launching parallel downloads..."
 
-# Step 4: Start services
-log "Step 4: Starting services..."
+download_model_async "$DIFFUSION_MODEL_URL" "${COMFY_DIR}/models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors" "Diffusion Model" &
+DIFF_PID=$!
+
+download_model_async "$TEXT_ENCODER_URL" "${COMFY_DIR}/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors" "Text Encoder" &
+TEXT_PID=$!
+
+download_model_async "$VAE_URL" "${COMFY_DIR}/models/vae/wan2.2_vae.safetensors" "VAE Model" &
+VAE_PID=$!
+
+download_model_async "$LORA_URL" "${COMFY_DIR}/models/loras/Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors" "LoRA Model" &
+LORA_PID=$!
+
+# Wait for all downloads to complete
+log "⏳ Waiting for downloads to complete..."
+DOWNLOAD_SUCCESS=true
+
+wait $DIFF_PID || DOWNLOAD_SUCCESS=false
+wait $TEXT_PID || DOWNLOAD_SUCCESS=false  
+wait $VAE_PID || DOWNLOAD_SUCCESS=false
+wait $LORA_PID || DOWNLOAD_SUCCESS=false
+
+if [ "$DOWNLOAD_SUCCESS" = true ]; then
+    log "🎉 All models downloaded successfully!"
+else
+    log "⚠ Some downloads failed, but continuing startup..."
+fi
+
+# Step 3: Start services
+log "Step 3: Starting services..."
 
 # Set environment variables
 export TORCH_INDUCTOR_FORCE_DISABLE_FP8="1"
