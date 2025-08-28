@@ -10,14 +10,58 @@ This is an optimized Docker setup for FastWAN 2.2-5B that downloads models from 
 - **Smart Caching**: Checks if models exist before downloading
 - **RTX 4090 Optimized**: Environment variables tuned for RTX 4090 performance
 
-## Quick Start
+## Build Options
 
-### Build the Docker Image
+### Option 1: Local Build (Recommended for Large Images)
+
+#### Prerequisites
+- Docker Desktop with BuildKit enabled
+- At least 10GB free disk space
+- Git LFS (if cloning a repository with large files)
+
+#### Build for Linux/AMD64 (from macOS/ARM)
 
 ```bash
-cd fastwan2.2-5b-network-storage
-docker build -t fastwan-network:latest .
+# Navigate to the project root
+cd /path/to/comfyui
+
+# Create and use a new builder instance (only needed once)
+docker buildx create --use
+
+# Build for linux/amd64 and push to GitHub Container Registry (GHCR)
+docker buildx build \
+  --platform linux/amd64 \
+  -t ghcr.io/your-username/fastwan2-5b-network-storage:latest \
+  -f fastwan2.2-5b-network-storage/Dockerfile \
+  --push \
+  fastwan2.2-5b-network-storage
+
+# For local testing (without push)
+docker buildx build \
+  --platform linux/amd64 \
+  -t fastwan-network:latest \
+  -f fastwan2.2-5b-network-storage/Dockerfile \
+  --load \
+  fastwan2.2-5b-network-storage
 ```
+
+### Option 2: GitHub Actions Build
+
+#### Prerequisites
+- GitHub repository with the code
+- GitHub Container Registry (GHCR) access
+- Sufficient storage space (4GB+ per image version)
+
+#### Setup
+1. Ensure your repository has the workflow file at `.github/workflows/build-and-push.yml`
+2. In GitHub repository settings, go to:
+   - Settings > Actions > General
+   - Under "Workflow permissions", enable "Read and write permissions"
+   - Check "Allow GitHub Actions to create and approve pull requests"
+
+3. The workflow will automatically run on:
+   - Pushes to `main` branch with changes in `fastwan2.2-5b-network-storage/`
+   - Manual trigger via GitHub Actions UI
 
 ### Run Locally
 
