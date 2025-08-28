@@ -9,3 +9,6 @@
 !workflow_api.json
 !api_wrapper.py
 !api_requirements.txt
+!start_services_simple.sh
+!test_deployment.sh
+!QUICK_FIX.md

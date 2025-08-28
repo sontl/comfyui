@@ -35,6 +35,7 @@ docker buildx build \
   -f fastwan2.2-5b-network-storage/Dockerfile \
   --push \
   fastwan2.2-5b-network-storage
+  
 
 # For local testing (without push)
 docker buildx build \
@@ -183,3 +184,157 @@ fastwan2.2-5b-network-storage/
 | Deployment Speed | Fast | Slow |
 
 The network storage version is ideal for cloud deployments where you frequently create/destroy instances, while the consolidated version is better for long-running deployments.
+
+## Fixes and Improvements
+
+### Problem Analysis
+The original startup script had several issues:
+1. ComfyUI directory already existing but being empty
+2. Git clone failing when directory exists
+3. Multiple script instances running simultaneously
+4. Script exiting on first error
+5. Parallel processes causing race conditions
+6. Docker layer caching issues
+7. Old images being used
+8. Registry not updated
+
+### Solution: Complete Rebuild
+
+We've created a **simple, bulletproof startup script** (`start_services_simple.sh`) that:
+
+✅ **Sequential execution** - No parallel processes causing race conditions  
+✅ **Robust directory handling** - Removes broken directories before cloning  
+✅ **Alternative clone method** - Fallback if direct clone fails  
+✅ **Clear logging** - Easy to debug what's happening  
+✅ **Instance locking** - Prevents multiple startups  
+✅ **Better error handling** - Continues with warnings instead of exiting on first error
+
+### Key Differences in New Script
+
+#### Old (Problematic)
+```bash
+# Parallel setup causing race conditions
+setup_comfyui &
+SETUP_PID=$!
+download_models_parallel &
+DOWNLOAD_PID=$!
+```
+
+#### New (Fixed)
+```bash
+# Sequential, step-by-step
+log "Step 1: Setting up ComfyUI..."
+# Setup ComfyUI completely first
+
+log "Step 2: Setting up FastWAN custom node..."  
+# Then setup custom nodes
+
+log "Step 3: Downloading models..."
+# Then download models one by one
+
+log "Step 4: Starting services..."
+# Finally start services
+```
+
+### Better Directory Handling
+```bash
+# Always ensure we have a clean setup
+if [ ! -f "${COMFY_DIR}/main.py" ]; then
+    # Clean up any existing directory
+    if [ -d "${COMFY_DIR}" ]; then
+        rm -rf "${COMFY_DIR}"
+    fi
+    # Then clone fresh
+    git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "${COMFY_DIR}"
+fi
+```
+
+### Instance Lock
+```bash
+# Prevent multiple instances
+LOCKFILE="/tmp/fastwan_setup.lock"
+if [ -f "$LOCKFILE" ]; then
+    exit 0
+fi
+```
+
+## Deployment Steps
+
+### 1. Clean Rebuild
+```bash
+cd fastwan2.2-5b-network-storage
+
+# Set your registry (optional)
+export REGISTRY="your-dockerhub-username"
+
+# Clean rebuild with no cache
+./rebuild.sh
+```
+
+### 2. Deploy to Novita.ai
+Use the new image tag: `your-registry/fastwan-network:v2-fixed`
+
+### 3. Expected Logs (Fixed)
+```
+[HH:MM:SS] === FastWAN 2.2-5B Simple Startup ===
+[HH:MM:SS] Step 1: Setting up ComfyUI...
+[HH:MM:SS] Cloning ComfyUI...
+[HH:MM:SS] Installing ComfyUI requirements...
+[HH:MM:SS] Step 2: Setting up FastWAN custom node...
+[HH:MM:SS] Cloning FastWAN custom node...
+[HH:MM:SS] Step 3: Downloading models...
+[HH:MM:SS] Model already exists: wan2.2_ti2v_5B_fp16.safetensors
+[HH:MM:SS] Step 4: Starting services...
+[HH:MM:SS] Starting API wrapper...
+[HH:MM:SS] API wrapper started (PID: 123)
+[HH:MM:SS] Starting ComfyUI...
+[HH:MM:SS] ComfyUI started (PID: 456)
+[HH:MM:SS] === Startup Complete ===
+[HH:MM:SS] ComfyUI: http://localhost:8188
+[HH:MM:SS] API: http://localhost:8189
+```
+
+## What's Different
+
+| Aspect | Old Script | New Script |
+|--------|------------|------------|
+| Execution | Parallel (race conditions) | Sequential (reliable) |
+| Error Handling | `set -e` (exit on error) | Continues with warnings |
+| Directory Handling | Basic check | Robust cleanup & fallback |
+| Logging | Mixed messages | Clear step-by-step |
+| Instance Control | Complex lockfile | Simple PID lock |
+
+## Verification
+
+After deployment, check:
+
+1. **No git errors**: No "destination path already exists" messages
+2. **Clean startup**: Sequential step messages  
+3. **Services running**: Both ComfyUI and API respond
+4. **No restarts**: Container stays running without crashes
+
+## Test API
+```bash
+# Health check
+curl http://your-instance-ip:8189/
+
+# Generate test video
+curl -X POST "http://your-instance-ip:8189/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A cat playing with yarn", "steps": 4}'
+```
+
+## Rollback Plan
+
+If this still doesn't work, use the consolidated version:
+```bash
+# Use the working but larger image
+cd ../fastwan2.2-5b
+docker build -f Dockerfile.consolidated -t fastwan-consolidated .
+```
+
+The consolidated version includes all models in the image (~15GB) but is guaranteed to work.
+
+## Support
+
+The new simple script should resolve all the directory and race condition issues. If you still see problems, the logs will now be much clearer about what's failing.

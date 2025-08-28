@@ -77,7 +77,7 @@ COPY --from=builder ${VENV_PATH} ${VENV_PATH}
 # Copy configuration files
 WORKDIR /workspace
 COPY Caddyfile /etc/caddy/Caddyfile
-COPY start_services_consolidated.sh /usr/local/bin/start_services.sh
+COPY start_services_simple.sh /usr/local/bin/start_services.sh
 COPY workflow_api.json /workspace/workflow_api.json
 COPY api_wrapper.py /workspace/api_wrapper.py
 COPY api_requirements.txt /workspace/api_requirements.txt
