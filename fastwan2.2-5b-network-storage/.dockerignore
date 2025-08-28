@@ -1,0 +1,7 @@
+# Ignore everything
+*
+
+# Re-include only what we actually need in the image
+!Dockerfile
+!Caddyfile
+!start_services.sh
