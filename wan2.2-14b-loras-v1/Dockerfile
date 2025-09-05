@@ -59,6 +59,57 @@ RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ComfyUI &&
     pip install --no-cache-dir -r requirements.txt && \
     # Create model directories
     mkdir -p models/diffusion_models models/text_encoders models/vae models/loras && \
+    # Install custom nodes (handle missing requirements gracefully)
+    cd custom_nodes && \
+    git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git comfyui-kjnodes || echo "KJNodes custom node clone failed, continuing..." && \
+    if [ -d "comfyui-kjnodes" ]; then \
+        cd comfyui-kjnodes && \
+        if [ -f "requirements.txt" ]; then \
+            pip install --no-cache-dir -r requirements.txt || echo "KJNodes requirements install failed, continuing..."; \
+        else \
+            echo "No requirements.txt found for KJNodes custom node, skipping..."; \
+        fi && \
+        cd ..; \
+    fi && \
+    git clone --depth 1 https://github.com/orssorbit/ComfyUI-wanBlockswap.git wanBlockSwap || echo "wanBlockSwap custom node clone failed, continuing..." && \
+    if [ -d "wanBlockSwap" ]; then \
+        cd wanBlockSwap && \
+        if [ -f "requirements.txt" ]; then \
+            pip install --no-cache-dir -r requirements.txt || echo "wanBlockSwap requirements install failed, continuing..."; \
+        else \
+            echo "No requirements.txt found for wanBlockSwap custom node, skipping..."; \
+        fi && \
+        cd ..; \
+    fi && \
+    git clone --depth 1 https://github.com/rgthree/rgthree-comfy.git rgthree-comfy || echo "rgthree-comfy custom node clone failed, continuing..." && \
+    if [ -d "rgthree-comfy" ]; then \
+        cd rgthree-comfy && \
+        if [ -f "requirements.txt" ]; then \
+            pip install --no-cache-dir -r requirements.txt || echo "rgthree-comfy requirements install failed, continuing..."; \
+        else \
+            echo "No requirements.txt found for rgthree-comfy custom node, skipping..."; \
+        fi && \
+        cd ..; \
+    fi && \
+    git clone --depth 1 https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git comfyui-videohelpersuite || echo "comfyui-videohelpersuite custom node clone failed, continuing..." && \
+    if [ -d "comfyui-videohelpersuite" ]; then \
+        cd comfyui-videohelpersuite && \
+        if [ -f "requirements.txt" ]; then \
+            pip install --no-cache-dir -r requirements.txt || echo "comfyui-videohelpersuite requirements install failed, continuing..."; \
+        else \
+            echo "No requirements.txt found for comfyui-videohelpersuite custom node, skipping..."; \
+        fi && \
+        cd ..; \
+    fi && \
+    git clone --depth 1 https://github.com/stduhpf/ComfyUI-WanMoeKSampler WanMoeKSampler || echo "WanMoeKSampler custom node clone failed, continuing..." && \
+    if [ -d "WanMoeKSampler" ]; then \
+        cd WanMoeKSampler && \
+        if [ -f "requirements.txt" ]; then \
+            pip install --no-cache-dir -r requirements.txt || echo "WanMoeKSampler requirements install failed, continuing..."; \
+        else \
+            echo "No requirements.txt found for WanMoeKSampler custom node, skipping..."; \
+        fi; \
+    fi && \
     # Clean up
     find ${VENV_PATH} -name '__pycache__' -type d -exec rm -rf {} + && \
     pip cache purge

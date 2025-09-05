@@ -7,12 +7,12 @@ COMFY_DIR="/workspace/ComfyUI"
 COMFY_LAUNCH_ARGS=${COMFY_LAUNCH_ARGS:-"--listen 0.0.0.0 --port 8188 --disable-auto-launch --preview-method auto"}
 
 # Model URLs
-TEXT_ENCODER_URL="https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/text_encoders/umt5_xxl_fp16.safetensors"
+TEXT_ENCODER_URL="https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp16.safetensors?download=true"
 VAE_URL="https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors?download=true"
-HIGH_NOISE_LORA_URL="https://huggingface.co/lightx2v/Wan2.2-Lightning/blob/main/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors"
-LOW_NOISE_LORA_URL="https://huggingface.co/lightx2v/Wan2.2-Lightning/blob/main/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors"
-HIGH_NOISE_14B_FP8_UPSCALED="https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
-LOW_NOISE_14B_FP8_UPSCALED="https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
+HIGH_NOISE_LORA_URL="https://huggingface.co/lightx2v/Wan2.2-Lightning/resolve/main/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors"
+LOW_NOISE_LORA_URL="https://huggingface.co/lightx2v/Wan2.2-Lightning/resolve/main/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors"
+HIGH_NOISE_14B_FP8_UPSCALED="https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
+LOW_NOISE_14B_FP8_UPSCALED="https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
 
 log() {
     echo "[$(date '+%H:%M:%S')] $*"
@@ -35,22 +35,22 @@ if [ ! -f "${COMFY_DIR}/main.py" ]; then
     exit 1
 fi
 
-if [ ! -d "${COMFY_DIR}/custom_nodes/fastwan-moviegen" ]; then
-    log "⚠ FastWAN custom node not found. Attempting to install at runtime..."
-    cd "${COMFY_DIR}/custom_nodes"
-    git clone --depth 1 https://github.com/FNGarvin/fastwan-moviegen.git fastwan-moviegen || {
-        log "⚠ Failed to clone FastWAN custom node. ComfyUI will run without it."
-    }
-    if [ -d "fastwan-moviegen" ] && [ -f "fastwan-moviegen/requirements.txt" ]; then
-        source "${VENV_COMFY}/bin/activate"
-        cd fastwan-moviegen
-        pip install --no-cache-dir -r requirements.txt || log "⚠ FastWAN requirements install failed"
-        deactivate
-        cd "${COMFY_DIR}"
-    fi
-else
-    log "✓ FastWAN custom node found."
-fi
+# if [ ! -d "${COMFY_DIR}/custom_nodes/fastwan-moviegen" ]; then
+#     log "⚠ FastWAN custom node not found. Attempting to install at runtime..."
+#     cd "${COMFY_DIR}/custom_nodes"
+#     git clone --depth 1 https://github.com/FNGarvin/fastwan-moviegen.git fastwan-moviegen || {
+#         log "⚠ Failed to clone FastWAN custom node. ComfyUI will run without it."
+#     }
+#     if [ -d "fastwan-moviegen" ] && [ -f "fastwan-moviegen/requirements.txt" ]; then
+#         source "${VENV_COMFY}/bin/activate"
+#         cd fastwan-moviegen
+#         pip install --no-cache-dir -r requirements.txt || log "⚠ FastWAN requirements install failed"
+#         deactivate
+#         cd "${COMFY_DIR}"
+#     fi
+# else
+#     log "✓ FastWAN custom node found."
+# fi
 
 log "ComfyUI installation verified."
 
@@ -132,8 +132,6 @@ download_model_async() {
 
 # Start all downloads in parallel
 log "🚀 Launching parallel downloads..."
-
-DIFF_PID=$!
 
 download_model_async "$TEXT_ENCODER_URL" "${COMFY_DIR}/models/text_encoders/umt5_xxl_fp16.safetensors" "Text Encoder" &
 TEXT_PID=$!
