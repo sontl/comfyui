@@ -49,7 +49,8 @@ RUN . ${VENV_PATH}/bin/activate && \
         uvicorn==0.24.0 \
         websocket-client==1.6.4 \
         requests==2.31.0 \
-        pydantic==2.5.0
+        pydantic==2.5.0 \
+        comfy-cli==1.4.1
 
 
 
@@ -126,6 +127,7 @@ RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ComfyUI &&
     find ${VENV_PATH} -name '__pycache__' -type d -exec rm -rf {} + && \
     pip cache purge
 
+RUN comfy node install audio-separation-nodes-comfyui 
 ###############################################################################
 # RUNTIME STAGE ###############################################################
 ###############################################################################
