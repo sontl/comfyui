@@ -1,13 +1,13 @@
 #!/bin/bash
 set -e
 
-# Build script for FastWAN 2.2-5B Network Storage
+# Build script for Qwen Image Edit Nunchanku API
 
-IMAGE_NAME="fastwan-network"
+IMAGE_NAME="qwen-image-edit-api"
 TAG="latest"
 REGISTRY=${REGISTRY:-""}
 
-echo "Building FastWAN 2.2-5B Network Storage Docker image..."
+echo "Building Qwen Image Edit Nunchanku API Docker image..."
 
 # Build the image
 docker build -t "${IMAGE_NAME}:${TAG}" .
@@ -32,7 +32,7 @@ fi
 echo "Image ready for deployment!"
 echo ""
 echo "To run locally:"
-echo "docker run --gpus all -p 8188:8188 -p 8189:8189 ${IMAGE_NAME}:${TAG}"
+echo "docker run --gpus all -p 8000:8000 ${IMAGE_NAME}:${TAG}"
 echo ""
 echo "To run with model caching:"
-echo "docker run --gpus all -p 8188:8188 -p 8189:8189 -v \$(pwd)/models:/workspace/ComfyUI/models ${IMAGE_NAME}:${TAG}"
+echo "docker run --gpus all -p 8000:8000 -v \$(pwd)/models:/app/models ${IMAGE_NAME}:${TAG}"

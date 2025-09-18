@@ -49,9 +49,7 @@ RUN . ${VENV_PATH}/bin/activate && \
         uvicorn==0.24.0 \
         websocket-client==1.6.4 \
         requests==2.31.0 \
-        pydantic==2.5.0 \
-        comfy-cli==1.4.1
-
+        pydantic==2.5.0
 
 
 # --- ComfyUI Installation ---------------------------------------------------
@@ -123,11 +121,19 @@ RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ComfyUI &&
             echo "No requirements.txt found for WanMoeKSampler custom node, skipping..."; \
         fi; \
     fi && \
+    git clone --depth 1 https://github.com/christian-byrne/audio-separation-nodes-comfyui.git audio-separation-nodes-comfyui || echo "audio-separation-nodes-comfyui custom node clone failed, continuing..." && \
+    if [ -d "audio-separation-nodes-comfyui" ]; then \
+        cd audio-separation-nodes-comfyui && \
+        if [ -f "requirements.txt" ]; then \
+            pip install --no-cache-dir -r requirements.txt || echo "audio-separation-nodes-comfyui requirements install failed, continuing..."; \
+        else \
+            echo "No requirements.txt found for audio-separation-nodes-comfyui custom node, skipping..."; \
+        fi; \
+    fi && \
     # Clean up
     find ${VENV_PATH} -name '__pycache__' -type d -exec rm -rf {} + && \
     pip cache purge
 
-RUN comfy node install audio-separation-nodes-comfyui 
 ###############################################################################
 # RUNTIME STAGE ###############################################################
 ###############################################################################

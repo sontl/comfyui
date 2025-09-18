@@ -191,6 +191,7 @@ POST /model-config
 | `ENVIRONMENT` | `production` | Environment mode |
 | `CUDA_VISIBLE_DEVICES` | `0` | GPU device selection |
 | `PYTORCH_CUDA_ALLOC_CONF` | `max_split_size_mb:512` | CUDA memory allocation |
+| `TORCH_INDUCTOR_FORCE_DISABLE_FP8` | `1` | Disable FP8 for compatibility |
 
 ### Performance Parameters
 
@@ -311,28 +312,31 @@ rm -rf ./models/*
 
 ```
 qwen-image-edit-nunchanku/
-├── main.py                 # FastAPI application entry point
-├── models/                 # Pydantic data models
+├── main.py                    # FastAPI application entry point
+├── models/                    # Pydantic data models
 │   ├── __init__.py
-│   └── api_models.py      # Request/response models
-├── services/              # Business logic services
+│   └── api_models.py         # Request/response models
+├── services/                  # Business logic services
 │   ├── __init__.py
-│   └── image_edit_service.py  # Main image editing service
-├── utils/                 # Utility modules
+│   └── image_edit_service.py # Main image editing service
+├── utils/                     # Utility modules
 │   ├── __init__.py
-│   ├── error_handler.py   # Error handling utilities
-│   ├── gpu_utils.py       # GPU management utilities
-│   ├── image_processor.py # Image processing utilities
-│   ├── logger.py          # Logging configuration
-│   └── model_utils.py     # Model loading utilities
-├── tests/                 # Test suite
+│   ├── error_handler.py      # Error handling utilities
+│   ├── gpu_utils.py          # GPU management utilities
+│   ├── image_processor.py    # Image processing utilities
+│   ├── logger.py             # Logging configuration
+│   └── model_utils.py        # Model loading utilities
+├── tests/                     # Test suite
 │   ├── __init__.py
-│   └── test_api.py        # API tests
-├── api_requirements.txt   # Python dependencies
-├── Dockerfile            # Docker configuration
-├── start_qwen_api.sh     # Startup script
-├── pytest.ini           # Test configuration
-└── README.md             # This file
+│   └── test_api.py           # API tests
+├── api_requirements.txt       # Python dependencies
+├── Dockerfile                 # Docker configuration
+├── DEPLOYMENT.md              # Deployment guide
+├── start_qwen_api.sh         # Startup script
+├── build.sh                  # Docker build script
+├── rebuild.sh                # Docker rebuild script
+├── pytest.ini               # Test configuration
+└── README.md                 # This file
 ```
 
 ### Contributing

@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-echo "=== FastWAN 2.2-5B Network Storage - Clean Rebuild ==="
+echo "=== Qwen Image Edit Nunchanku API - Clean Rebuild ==="
 
-IMAGE_NAME="fastwan-network"
-TAG="v2-fixed"
+IMAGE_NAME="qwen-image-edit-api"
+TAG="latest"
 REGISTRY=${REGISTRY:-""}
 
 # Clean up any existing images
@@ -38,9 +38,9 @@ fi
 
 echo ""
 echo "=== Test locally with: ==="
-echo "docker run --rm --gpus all -p 8188:8188 -p 8189:8189 ${IMAGE_NAME}:${TAG}"
+echo "docker run --rm --gpus all -p 8000:8000 ${IMAGE_NAME}:${TAG}"
 echo ""
-echo "=== Deploy to Novita.ai with: ==="
+echo "=== Deploy with: ==="
 if [[ -n "${REGISTRY}" ]]; then
     echo "Image: ${REGISTRY}/${IMAGE_NAME}:${TAG}"
 else
