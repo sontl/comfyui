@@ -8,11 +8,24 @@ TAG="latest"
 REGISTRY=${REGISTRY:-""}
 
 echo "Building Qwen Image Edit Nunchanku API Docker image..."
+echo "Working directory: $(pwd)"
+echo "Docker version: $(docker --version)"
 
-# Build the image
-docker build -t "${IMAGE_NAME}:${TAG}" .
+# Check if Docker daemon is running
+if ! docker info >/dev/null 2>&1; then
+    echo "Error: Docker daemon is not running or accessible"
+    echo "Please start Docker and ensure you have proper permissions"
+    exit 1
+fi
 
-echo "Build complete: ${IMAGE_NAME}:${TAG}"
+# Build the image with better error handling
+echo "Starting Docker build..."
+if docker build -t "${IMAGE_NAME}:${TAG}" .; then
+    echo "Build complete: ${IMAGE_NAME}:${TAG}"
+else
+    echo "Build failed! Please check the error messages above."
+    exit 1
+fi
 
 # Tag for registry if specified
 if [[ -n "${REGISTRY}" ]]; then

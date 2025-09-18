@@ -1,14 +1,86 @@
-# Ignore everything
-*
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+PIPFILE.lock
 
-# Re-include only what we actually need in the image
-!Dockerfile
-!Caddyfile
-!start_services.sh
-!start_services_consolidated.sh
-!workflow_api.json
-!api_wrapper.py
-!api_requirements.txt
-!start_services_simple.sh
-!test_deployment.sh
-!QUICK_FIX.md
+# Testing
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environment variables
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# Model files (too large, should be downloaded at runtime)
+*.pth
+*.bin
+*.safetensors
+models/*.pth
+models/*.bin
+models/*.safetensors
+
+# Build artifacts
+*.tar.gz
+*.zip

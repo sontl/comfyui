@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.4
 ###############################################################################
 # QWEN IMAGE EDIT NUNCHANKU API DOCKERFILE
 # Optimized Docker image for Qwen Image Edit Nunchanku API service
