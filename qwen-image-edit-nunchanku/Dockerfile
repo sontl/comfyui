@@ -39,7 +39,6 @@ RUN python3 -m venv ${VENV_PATH} && \
 
 # Install Nunchaku wheel
 RUN . ${VENV_PATH}/bin/activate && \
-   RUN . ${VENV_PATH}/bin/activate && \
     pip install "https://github.com/nunchaku-tech/nunchaku/releases/download/v0.3.1/nunchaku-0.3.1+torch2.7-cp310-cp310-linux_x86_64.whl" && \
     ls -la /tmp/nunchaku.whl && \
     head -20 /tmp/nunchaku.whl && \
