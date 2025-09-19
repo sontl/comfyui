@@ -16,43 +16,19 @@ def verify_models():
     cache_dir = os.getenv("MODEL_CACHE_DIR", "./models")
     logger.info(f"Checking models in cache directory: {cache_dir}")
     
-    # Expected model files
-    expected_models = {
-        "Base Qwen Model": f"{cache_dir}/Qwen--Qwen-Image-Edit",
-        "Nunchaku Models": [
-            # Only r128 models, 8-step and original (no 4-step, no r64)
-            f"{cache_dir}/nunchaku-qwen-image-edit/svdq-int4_r128-qwen-image-edit-lightningv1.0-8steps.safetensors",
-            f"{cache_dir}/nunchaku-qwen-image-edit/svdq-int4_r128-qwen-image-edit.safetensors",
-        ]
-    }
+    # Expected Nunchaku quantized model files (self-contained, no base model needed)
+    expected_models = [
+        # Only r128 models, 8-step and original (no 4-step, no r64)
+        f"{cache_dir}/nunchaku-qwen-image-edit/svdq-int4_r128-qwen-image-edit-lightningv1.0-8steps.safetensors",
+        f"{cache_dir}/nunchaku-qwen-image-edit/svdq-int4_r128-qwen-image-edit.safetensors",
+    ]
     
-    all_good = True
-    
-    # Check base model
-    base_model_path = expected_models["Base Qwen Model"]
-    if os.path.exists(base_model_path):
-        logger.info(f"✓ Base Qwen model found: {base_model_path}")
-        
-        # Check for key files in the base model
-        key_files = ["config.json", "model.safetensors.index.json"]
-        for key_file in key_files:
-            file_path = os.path.join(base_model_path, key_file)
-            if os.path.exists(file_path):
-                size_mb = os.path.getsize(file_path) / (1024 * 1024)
-                logger.info(f"  ✓ {key_file}: {size_mb:.2f} MB")
-            else:
-                logger.warning(f"  ✗ Missing: {key_file}")
-                all_good = False
-    else:
-        logger.error(f"✗ Base Qwen model not found: {base_model_path}")
-        all_good = False
-    
-    # Check Nunchaku models
+    # Check Nunchaku quantized models (self-contained, no base model needed)
     logger.info("Checking Nunchaku quantized models:")
     found_models = 0
-    total_models = len(expected_models["Nunchaku Models"])
+    total_models = len(expected_models)
     
-    for model_path in expected_models["Nunchaku Models"]:
+    for model_path in expected_models:
         if os.path.exists(model_path):
             size_mb = os.path.getsize(model_path) / (1024 * 1024)
             model_name = os.path.basename(model_path)
@@ -63,12 +39,6 @@ def verify_models():
             logger.warning(f"  ✗ Missing: {model_name}")
     
     logger.info(f"Found {found_models}/{total_models} Nunchaku models")
-    
-    if found_models == 0:
-        logger.error("No Nunchaku models found!")
-        all_good = False
-    elif found_models < total_models:
-        logger.warning("Some Nunchaku models are missing, but API should still work")
     
     # Calculate total disk usage
     total_size = 0
@@ -83,11 +53,14 @@ def verify_models():
     logger.info(f"Total model cache size: {total_size_gb:.2f} GB")
     
     # Summary
-    if all_good:
-        logger.info("✓ All models verified successfully!")
+    if found_models == total_models:
+        logger.info("✓ All Nunchaku models verified successfully!")
+        return True
+    elif found_models > 0:
+        logger.warning(f"⚠ Found {found_models}/{total_models} Nunchaku models - API should still work")
         return True
     else:
-        logger.warning("⚠ Some issues found, but API may still work with available models")
+        logger.error("✗ No Nunchaku models found!")
         return False
 
 def list_all_files():

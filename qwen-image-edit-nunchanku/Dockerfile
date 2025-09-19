@@ -58,21 +58,19 @@ RUN . ${VENV_PATH}/bin/activate && \
 # Create model cache directory
 RUN mkdir -p /app/models/nunchaku-qwen-image-edit
 
-# Copy download scripts
-COPY download_base_model.py /tmp/
+# Copy download script
 COPY download_nunchaku_models.py /tmp/
 
-# Download base Qwen Image Edit model
-RUN . ${VENV_PATH}/bin/activate && python3 /tmp/download_base_model.py
-
 # Download Nunchaku quantized models (r128 only, 8-step and original)
+# These are self-contained quantized models that don't require base model files
 RUN . ${VENV_PATH}/bin/activate && python3 /tmp/download_nunchaku_models.py
 
 # Verify downloaded models
 COPY verify_models.py /tmp/
 RUN . ${VENV_PATH}/bin/activate && \
     cd /tmp && \
-    MODEL_CACHE_DIR=/app/models python3 verify_models.py && \
+    echo "Verifying downloaded models..." && \
+    MODEL_CACHE_DIR=/app/models python3 verify_models.py --list && \
     echo "Model verification completed"
 
 ###############################################################################
@@ -100,7 +98,6 @@ COPY utils/ /app/utils/
 COPY api_requirements.txt /app/
 COPY start_qwen_api.sh /app/
 COPY verify_models.py /app/
-COPY download_base_model.py /app/
 COPY download_nunchaku_models.py /app/
 RUN chmod +x /app/start_qwen_api.sh
 

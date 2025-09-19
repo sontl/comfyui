@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Script to download Nunchaku quantized models (r128 only).
+These are self-contained quantized versions of Qwen Image Edit that don't require base model files.
 """
 
 from huggingface_hub import hf_hub_download
