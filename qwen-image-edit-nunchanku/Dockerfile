@@ -41,6 +41,12 @@ RUN python3 -m venv ${VENV_PATH} && \
 RUN . ${VENV_PATH}/bin/activate && \
     pip install --no-cache-dir "https://github.com/nunchaku-tech/nunchaku/releases/download/v0.3.1/nunchaku-0.3.1+torch2.7-cp310-cp310-linux_x86_64.whl"
 
+# Install diffusers from GitHub repo
+RUN . ${VENV_PATH}/bin/activate && \
+    pip install --no-cache-dir git+https://github.com/huggingface/diffusers.git && \
+    find ${VENV_PATH} -name '__pycache__' -type d -exec rm -rf {} + && \
+    pip cache purge
+
 # Install API dependencies
 COPY api_requirements.txt /tmp/
 RUN . ${VENV_PATH}/bin/activate && \
