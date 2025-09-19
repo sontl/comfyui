@@ -58,55 +58,15 @@ RUN . ${VENV_PATH}/bin/activate && \
 # Create model cache directory
 RUN mkdir -p /app/models/nunchaku-qwen-image-edit
 
+# Copy download scripts
+COPY download_base_model.py /tmp/
+COPY download_nunchaku_models.py /tmp/
+
 # Download base Qwen Image Edit model
-RUN . ${VENV_PATH}/bin/activate && \
-    python3 -c "
-from huggingface_hub import snapshot_download
-import os
-print('Downloading base Qwen Image Edit model...')
-snapshot_download(
-    repo_id='Qwen/Qwen-Image-Edit',
-    cache_dir='/app/models',
-    local_dir='/app/models/Qwen--Qwen-Image-Edit',
-    local_dir_use_symlinks=False
-)
-print('Base model download completed')
-"
+RUN . ${VENV_PATH}/bin/activate && python3 /tmp/download_base_model.py
 
 # Download Nunchaku quantized models (r128 only, 8-step and original)
-RUN . ${VENV_PATH}/bin/activate && \
-    python3 -c "
-from huggingface_hub import hf_hub_download
-import os
-
-# Model configurations to download (r128 only, no 4-step models)
-models = [
-    # 8-step model (r128 only)
-    ('nunchaku-tech/nunchaku-qwen-image-edit', 'svdq-int4_r128-qwen-image-edit-lightningv1.0-8steps.safetensors'),
-    # Original model (r128 only)
-    ('nunchaku-tech/nunchaku-qwen-image-edit', 'svdq-int4_r128-qwen-image-edit.safetensors'),
-]
-
-cache_dir = '/app/models'
-os.makedirs(cache_dir, exist_ok=True)
-
-for repo_id, filename in models:
-    try:
-        print(f'Downloading {filename}...')
-        hf_hub_download(
-            repo_id=repo_id,
-            filename=filename,
-            cache_dir=cache_dir,
-            local_dir=f'{cache_dir}/nunchaku-qwen-image-edit',
-            local_dir_use_symlinks=False
-        )
-        print(f'Downloaded {filename}')
-    except Exception as e:
-        print(f'Warning: Failed to download {filename}: {e}')
-        continue
-
-print('Nunchaku model downloads completed')
-"
+RUN . ${VENV_PATH}/bin/activate && python3 /tmp/download_nunchaku_models.py
 
 # Verify downloaded models
 COPY verify_models.py /tmp/
@@ -140,6 +100,8 @@ COPY utils/ /app/utils/
 COPY api_requirements.txt /app/
 COPY start_qwen_api.sh /app/
 COPY verify_models.py /app/
+COPY download_base_model.py /app/
+COPY download_nunchaku_models.py /app/
 RUN chmod +x /app/start_qwen_api.sh
 
 # Set environment variables optimized for Qwen Image Edit
