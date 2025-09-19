@@ -17,7 +17,7 @@ from huggingface_hub import hf_hub_download
 from models.api_models import ImageEditRequest, ModelInfo
 from utils.image_processor import ImageProcessor
 from utils.gpu_utils import get_gpu_memory_info, optimize_gpu_memory
-from utils.model_utils import load_qwen_pipeline, get_nunchaku_transformer
+from utils.model_utils import load_qwen_pipeline, get_nunchaku_transformer, get_available_model_configs
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class ImageEditService:
             "default_steps": 8,
             "default_rank": 128,
             "max_steps": 50,
-            "supported_ranks": [64, 128],
+            "supported_ranks": [128],  # Only r128 supported
             "enable_cpu_offload": True,
             "memory_optimization": True
         }
@@ -53,6 +53,33 @@ class ImageEditService:
         # Model cache directory
         self.model_cache_dir = os.getenv("MODEL_CACHE_DIR", "./models")
         os.makedirs(self.model_cache_dir, exist_ok=True)
+        
+        # Check available models and update config
+        self._update_config_from_available_models()
+    
+    def _update_config_from_available_models(self) -> None:
+        """Update model configuration based on available pre-downloaded models."""
+        try:
+            available_configs = get_available_model_configs(self.model_cache_dir)
+            
+            # Update supported ranks based on available models
+            if available_configs["supported_ranks"]:
+                self._model_config["supported_ranks"] = available_configs["supported_ranks"]
+                # Use the highest available rank as default
+                self._model_config["default_rank"] = max(available_configs["supported_ranks"])
+            
+            # Update supported steps based on available models
+            if available_configs["supported_steps"]:
+                # Prefer 8 steps if available, otherwise use the highest available
+                if 8 in available_configs["supported_steps"]:
+                    self._model_config["default_steps"] = 8
+                else:
+                    self._model_config["default_steps"] = max(available_configs["supported_steps"])
+            
+            logger.info(f"Updated model config based on available models: {self._model_config}")
+            
+        except Exception as e:
+            logger.warning(f"Could not update config from available models: {e}")
     
     async def initialize(self) -> None:
         """
@@ -106,7 +133,8 @@ class ImageEditService:
             # Get the Nunchaku-optimized transformer
             self.transformer = get_nunchaku_transformer(
                 self.pipeline.transformer,
-                rank=self._model_config["default_rank"]
+                rank=self._model_config["default_rank"],
+                num_steps=self._model_config["default_steps"]
             )
             
             # Update pipeline with optimized transformer
@@ -298,11 +326,14 @@ class ImageEditService:
         for key, value in config.items():
             if key == "default_steps" and isinstance(value, int) and 1 <= value <= 50:
                 self._model_config["default_steps"] = value
-            elif key == "default_rank" and value in [64, 128]:
+            elif key == "default_rank" and value == 128:
                 self._model_config["default_rank"] = value
                 # Update transformer rank if needed
                 if hasattr(self.transformer, 'set_rank'):
                     self.transformer.set_rank(value)
+            elif key == "default_rank" and value != 128:
+                logger.warning(f"Only rank 128 is supported, ignoring rank {value}")
+                continue
             elif key == "enable_cpu_offload" and isinstance(value, bool):
                 self._model_config["enable_cpu_offload"] = value
                 # Apply memory optimization changes
