@@ -42,7 +42,6 @@ RUN . ${VENV_PATH}/bin/activate && \
     curl -L -o /tmp/nunchaku.whl \
         "https://huggingface.co/mit-han-lab/nunchaku/resolve/main/nunchaku-0.3.1%2Btorch2.7-cp310-cp310-linux_x86_64.whl" && \
     ls -la /tmp/nunchaku.whl && \
-    file /tmp/nunchaku.whl && \
     pip install /tmp/nunchaku.whl && \
     rm /tmp/nunchaku.whl
 
