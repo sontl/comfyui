@@ -1,0 +1,14 @@
+# Ignore everything
+*
+
+# Re-include only what we actually need in the image
+!Dockerfile
+!Caddyfile
+!start_services.sh
+!start_services_consolidated.sh
+!workflow_api.json
+!api_wrapper.py
+!api_requirements.txt
+!start_services_simple.sh
+!test_deployment.sh
+!QUICK_FIX.md
