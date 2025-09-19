@@ -98,21 +98,41 @@ docker push your-registry/infinite-talk-v1:latest
 
 ## API Usage
 
-### Generate Video
+The InfiniteTalk API generates talking videos from an image and audio file.
+
+### Generate Talking Video
 
 ```bash
 curl -X POST "http://localhost:8189/generate" \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "A cat playing with a ball of yarn",
-    "steps": 8,
+    "image_url": "https://example.com/portrait.jpg",
+    "audio_url": "https://example.com/speech.mp3",
+    "prompt": "the woman is singing",
+    "steps": 5,
     "cfg": 1.0,
-    "width": 1280,
-    "height": 704,
-    "length": 121,
-    "fps": 24
+    "width": 960,
+    "height": 528,
+    "max_frames": 101,
+    "fps": 20
   }'
 ```
+
+### Request Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `image_url` | string | **Required** | URL to portrait image (JPG/PNG) |
+| `audio_url` | string | **Required** | URL to audio file (MP3/WAV) |
+| `prompt` | string | "the woman is singing" | Positive text prompt |
+| `negative_prompt` | string | (default) | Negative text prompt |
+| `seed` | integer | 3 | Random seed for generation |
+| `steps` | integer | 5 | Number of diffusion steps |
+| `cfg` | float | 1.0 | Classifier-free guidance scale |
+| `width` | integer | 960 | Output video width |
+| `height` | integer | 528 | Output video height |
+| `max_frames` | integer | 101 | Maximum number of frames |
+| `fps` | integer | 20 | Frames per second |
 
 ### Check Status
 
@@ -123,8 +143,25 @@ curl "http://localhost:8189/status/{job_id}"
 ### Download Video
 
 ```bash
-curl "http://localhost:8189/download/{job_id}" -o video.mp4
+curl "http://localhost:8189/download/{job_id}" -o talking_video.mp4
 ```
+
+### Example Response
+
+```json
+{
+  "job_id": "abc123-def456-ghi789",
+  "status": "queued",
+  "message": "Talking video generation started"
+}
+```
+
+### Status Values
+
+- `queued`: Job is waiting to start
+- `processing`: Video is being generated
+- `completed`: Video is ready for download
+- `error`: Generation failed
 
 ## Performance Tips
 

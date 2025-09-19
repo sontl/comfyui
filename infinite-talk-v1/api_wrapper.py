@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-FastAPI wrapper for ComfyUI FastWAN 2.2-5B workflow
-Provides a simple REST API to generate videos from text prompts
+FastAPI wrapper for ComfyUI InfiniteTalk workflow
+Provides a simple REST API to generate talking videos from image and audio
 """
 
 import json
@@ -11,6 +11,8 @@ import asyncio
 import time
 from pathlib import Path
 from typing import Optional
+import urllib.request
+import shutil
 
 import requests
 import websocket
@@ -21,20 +23,23 @@ import uvicorn
 
 # Configuration
 COMFYUI_URL = "http://localhost:8188"
-WORKFLOW_PATH = "/workspace/workflow_api.json"
+WORKFLOW_PATH = "/workspace/workflow-infinitetalk-api.son.json"
 OUTPUT_DIR = "/workspace/ComfyUI/output"
+INPUT_DIR = "/workspace/ComfyUI/input"
 API_PORT = 8189
 
 class GenerateRequest(BaseModel):
-    prompt: str
-    negative_prompt: Optional[str] = None
-    seed: Optional[int] = None
-    steps: Optional[int] = 8
+    image_url: str
+    audio_url: str
+    prompt: Optional[str] = "the woman is singing"
+    negative_prompt: Optional[str] = "low quality, worst quality, 色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+    seed: Optional[int] = 3
+    steps: Optional[int] = 5
     cfg: Optional[float] = 1.0
-    width: Optional[int] = 1280
-    height: Optional[int] = 704
-    length: Optional[int] = 121
-    fps: Optional[int] = 24
+    width: Optional[int] = 960
+    height: Optional[int] = 528
+    max_frames: Optional[int] = 101
+    fps: Optional[int] = 20
 
 class GenerateResponse(BaseModel):
     job_id: str
@@ -42,8 +47,8 @@ class GenerateResponse(BaseModel):
     message: str
 
 app = FastAPI(
-    title="FastWAN 2.2-5B Video Generation API",
-    description="REST API wrapper for ComfyUI FastWAN 2.2-5B workflow",
+    title="InfiniteTalk Video Generation API",
+    description="REST API wrapper for ComfyUI InfiniteTalk workflow",
     version="1.0.0"
 )
 
@@ -58,38 +63,60 @@ def load_workflow():
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="Workflow file not found")
 
+def download_file(url: str, filename: str) -> str:
+    """Download file from URL to input directory"""
+    input_path = Path(INPUT_DIR)
+    input_path.mkdir(exist_ok=True)
+    
+    file_path = input_path / filename
+    
+    try:
+        with urllib.request.urlopen(url) as response:
+            with open(file_path, 'wb') as f:
+                shutil.copyfileobj(response, f)
+        return filename
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to download file from {url}: {str(e)}")
+
 def modify_workflow(workflow, request: GenerateRequest):
     """Modify workflow with user parameters"""
-    # Update positive prompt (node 6)
-    workflow["6"]["inputs"]["text"] = request.prompt
-    
-    # Update negative prompt if provided (node 7)
-    if request.negative_prompt:
-        workflow["7"]["inputs"]["text"] = request.negative_prompt
-    
-    # Update sampling parameters (node 3)
-    if request.seed:
-        workflow["3"]["inputs"]["seed"] = request.seed
-    if request.steps:
-        workflow["3"]["inputs"]["steps"] = request.steps
-    if request.cfg:
-        workflow["3"]["inputs"]["cfg"] = request.cfg
-    
-    # Update video dimensions and length (node 55)
-    if request.width:
-        workflow["55"]["inputs"]["width"] = request.width
-    if request.height:
-        workflow["55"]["inputs"]["height"] = request.height
-    if request.length:
-        workflow["55"]["inputs"]["length"] = request.length
-    
-    # Update FPS (node 57)
-    if request.fps:
-        workflow["57"]["inputs"]["fps"] = request.fps
-    
-    # Generate unique filename prefix
     job_id = str(uuid.uuid4())
-    workflow["58"]["inputs"]["filename_prefix"] = f"FastWan/api_{job_id}"
+    
+    # Download image and audio files
+    image_filename = f"image_{job_id}.jpg"
+    audio_filename = f"audio_{job_id}.mp3"
+    
+    downloaded_image = download_file(request.image_url, image_filename)
+    downloaded_audio = download_file(request.audio_url, audio_filename)
+    
+    # Update image input (node 284 - LoadImage)
+    workflow["284"]["inputs"]["image"] = downloaded_image
+    
+    # Update audio inputs (nodes 125 and 343 - LoadAudio)
+    workflow["125"]["inputs"]["audio"] = downloaded_audio
+    workflow["343"]["inputs"]["audio"] = downloaded_audio
+    
+    # Update text prompts (node 241 - WanVideoTextEncodeCached)
+    workflow["241"]["inputs"]["positive_prompt"] = request.prompt
+    workflow["241"]["inputs"]["negative_prompt"] = request.negative_prompt
+    
+    # Update sampling parameters (node 128 - WanVideoSampler)
+    workflow["128"]["inputs"]["seed"] = request.seed
+    workflow["128"]["inputs"]["steps"] = request.steps
+    workflow["128"]["inputs"]["cfg"] = request.cfg
+    
+    # Update dimensions (nodes 339, 340 - INTConstant)
+    workflow["339"]["inputs"]["value"] = request.width  # Width
+    workflow["340"]["inputs"]["value"] = request.height  # Height
+    
+    # Update max frames (node 341 - INTConstant)
+    workflow["341"]["inputs"]["value"] = request.max_frames
+    
+    # Update FPS in video combine (node 131 - VHS_VideoCombine)
+    workflow["131"]["inputs"]["frame_rate"] = request.fps
+    
+    # Update filename prefix for output
+    workflow["131"]["inputs"]["filename_prefix"] = f"InfiniteTalk/api_{job_id}"
     
     return workflow, job_id
 
@@ -141,8 +168,8 @@ def wait_for_completion(prompt_id: str, job_id: str):
                 elif msg_type == "executed":
                     d = data.get("data", {})
                     if d.get("prompt_id") == prompt_id:
-                        # Final node is SaveVideo (id "58") in this workflow
-                        if d.get("node") == "58":
+                        # Final node is VHS_VideoCombine (id "131") in this workflow
+                        if d.get("node") == "131":
                             job_status[job_id] = {"status": "completed", "progress": 100}
                             break
 
@@ -175,12 +202,12 @@ def find_output_video(job_id: str) -> Optional[str]:
     """Find the generated video file"""
     output_path = Path(OUTPUT_DIR)
     
-    # The filename pattern is set in the workflow as "FastWan/api_{job_id}"
+    # The filename pattern is set in the workflow as "InfiniteTalk/api_{job_id}"
     # ComfyUI typically saves to subdirectories based on the prefix
-    fastwan_dir = output_path / "FastWan"
+    infinitetalk_dir = output_path / "InfiniteTalk"
     
-    # Look for video files with the job ID in both root and FastWan subdirectory
-    search_paths = [output_path, fastwan_dir]
+    # Look for video files with the job ID in both root and InfiniteTalk subdirectory
+    search_paths = [output_path, infinitetalk_dir]
     pattern = f"api_{job_id}"
     
     for search_path in search_paths:
@@ -202,11 +229,15 @@ def find_output_video(job_id: str) -> Optional[str]:
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"message": "FastWAN 2.2-5B Video Generation API", "status": "running"}
+    return {"message": "InfiniteTalk Video Generation API", "status": "running"}
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_video(request: GenerateRequest, background_tasks: BackgroundTasks):
-    """Generate video from text prompt"""
+    """Generate talking video from image and audio"""
+    
+    # Validate URLs
+    if not request.image_url or not request.audio_url:
+        raise HTTPException(status_code=400, detail="Both image_url and audio_url are required")
     
     # Load and modify workflow
     workflow = load_workflow()
@@ -225,7 +256,7 @@ async def generate_video(request: GenerateRequest, background_tasks: BackgroundT
     return GenerateResponse(
         job_id=job_id,
         status="queued",
-        message="Video generation started"
+        message="Talking video generation started"
     )
 
 @app.get("/status/{job_id}")
@@ -368,8 +399,9 @@ async def delete_job(job_id: str):
     return {"message": "Job deleted"}
 
 if __name__ == "__main__":
-    # Ensure output directory exists
+    # Ensure directories exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(INPUT_DIR, exist_ok=True)
     
     # Start the API server
     uvicorn.run(
