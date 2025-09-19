@@ -146,7 +146,16 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu${UBUNTU_VERSION}
 # Install runtime system dependencies including aria2c for fast downloads
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        python3 python3-dev git curl ca-certificates gpg ffmpeg tini aria2 && \
+        python3 python3-dev git curl ca-certificates gpg tini aria2 \
+        xz-utils && \
+    # Install static ffmpeg build with NVIDIA codec support
+    cd /tmp && \
+    curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz -o ffmpeg.tar.xz && \
+    tar -xf ffmpeg.tar.xz && \
+    cp ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg && \
+    cp ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/local/bin/ffprobe && \
+    chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
+    rm -rf /tmp/ffmpeg* && \
     \
     # Add repositories and install Caddy & Tailscale
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg && \
