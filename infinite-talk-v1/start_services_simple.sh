@@ -13,6 +13,8 @@ WAN_21_URL="https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/
 WAN_21_INFINITE_MULTI_URL="https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Multi_fp8_e4m3fn_scaled_KJ.safetensors"
 WAN_21_INFINITE_SINGLE_URL="https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors"
 LIGHTX2V_LORA_URL="https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank128_bf16.safetensors"
+CLIP_VISION_URL="https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+
 log() {
     echo "[$(date '+%H:%M:%S')] $*"
 }
@@ -121,17 +123,20 @@ TEXT_PID=$!
 download_model_async "$VAE_URL" "${COMFY_DIR}/models/vae/wan_2.1_vae.safetensors" "VAE Model" &
 VAE_PID=$!
 
-download_model_async "$WAN_21_URL" "${COMFY_DIR}/models/checkpoints/Wan2_1-I2V-14B-720p_fp8_e4m3fn_scaled_KJ.safetensors" "Wan 2.1 Model" &
+download_model_async "$WAN_21_URL" "${COMFY_DIR}/models/diffusion_models/Wan2_1-I2V-14B-720p_fp8_e4m3fn_scaled_KJ.safetensors" "Wan 2.1 Model" &
 WAN21_PID=$!
 
-download_model_async "$WAN_21_INFINITE_MULTI_URL" "${COMFY_DIR}/models/checkpoints/Wan2_1-InfiniteTalk-Multi_fp8_e4m3fn_scaled_KJ.safetensors" "Wan 2.1 Infinite Multi Model" &
+download_model_async "$WAN_21_INFINITE_MULTI_URL" "${COMFY_DIR}/models/diffusion_models/Wan2_1-InfiniteTalk-Multi_fp8_e4m3fn_scaled_KJ.safetensors" "Wan 2.1 Infinite Multi Model" &
 WAN21_INFINITE_MULTI_PID=$!
 
-download_model_async "$WAN_21_INFINITE_SINGLE_URL" "${COMFY_DIR}/models/checkpoints/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" "Wan 2.1 Infinite Single Model" & 
+download_model_async "$WAN_21_INFINITE_SINGLE_URL" "${COMFY_DIR}/models/diffusion_models/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" "Wan 2.1 Infinite Single Model" & 
 WAN21_INFINITE_SINGLE_PID=$!
 
 download_model_async "$LIGHTX2V_LORA_URL" "${COMFY_DIR}/models/loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank128_bf16.safetensors" "Lightx2v LoRA" &
 LIGHTX2V_LORA_PID=$!
+
+download_model_async "$CLIP_VISION_URL" "${COMFY_DIR}/models/clip_vision/clip_vision.safetensors" "CLIP Vision" &
+CLIP_VISION_PID=$!
 
 # Wait for all downloads to complete
 log "⏳ Waiting for downloads to complete..."
@@ -143,6 +148,7 @@ wait $WAN21_PID || DOWNLOAD_SUCCESS=false
 wait $WAN21_INFINITE_MULTI_PID || DOWNLOAD_SUCCESS=false
 wait $WAN21_INFINITE_SINGLE_PID || DOWNLOAD_SUCCESS=false
 wait $LIGHTX2V_LORA_PID || DOWNLOAD_SUCCESS=false
+wait $CLIP_VISION_PID || DOWNLOAD_SUCCESS=false
 
 if [ "$DOWNLOAD_SUCCESS" = true ]; then
     log "🎉 All models downloaded successfully!"
