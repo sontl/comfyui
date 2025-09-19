@@ -20,9 +20,9 @@ RUN apt-get update && \
 
 # --- Python venv & Core ML stack ---------------------------------------------
 ARG TORCH_CUDA=cu126
-ARG TORCH_VER=2.6.0
-ARG TVISION_VER=0.21.0+${TORCH_CUDA}
-ARG TAUDIO_VER=2.6.0+${TORCH_CUDA}
+ARG TORCH_VER=2.7.0
+ARG TVISION_VER=0.22.0+${TORCH_CUDA}
+ARG TAUDIO_VER=2.7.0+${TORCH_CUDA}
 ARG XFORMERS_VER=0.0.29.post2
 
 ENV VENV_PATH=/opt/venv
