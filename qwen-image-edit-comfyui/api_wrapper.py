@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-FastAPI wrapper for ComfyUI InfiniteTalk workflow
-Provides a simple REST API to generate talking videos from image and audio
+FastAPI wrapper for ComfyUI Qwen Image Edit workflow
+Provides a simple REST API to edit images using text prompts
 """
 
 import json
@@ -23,32 +23,28 @@ import uvicorn
 
 # Configuration
 COMFYUI_URL = "http://localhost:8188"
-WORKFLOW_PATH = "/workspace/workflow-infinitetalk-api.son.json"
+WORKFLOW_PATH = "/workspace/workflow_api.json"
 OUTPUT_DIR = "/workspace/ComfyUI/output"
 INPUT_DIR = "/workspace/ComfyUI/input"
 API_PORT = 8189
 
-class GenerateRequest(BaseModel):
+class EditImageRequest(BaseModel):
     image_url: str
-    audio_url: str
-    prompt: Optional[str] = "the woman is singing"
-    negative_prompt: Optional[str] = "low quality, worst quality, 色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
-    seed: Optional[int] = 3
-    steps: Optional[int] = 5
+    prompt: str
+    negative_prompt: Optional[str] = ""
+    seed: Optional[int] = None
+    steps: Optional[int] = 8
     cfg: Optional[float] = 1.0
-    width: Optional[int] = 960
-    height: Optional[int] = 528
-    max_frames: Optional[int] = 101
-    fps: Optional[int] = 20
+    megapixels: Optional[float] = 1.0
 
-class GenerateResponse(BaseModel):
+class EditImageResponse(BaseModel):
     job_id: str
     status: str
     message: str
 
 app = FastAPI(
-    title="InfiniteTalk Video Generation API",
-    description="REST API wrapper for ComfyUI InfiniteTalk workflow",
+    title="Qwen Image Edit API",
+    description="REST API wrapper for ComfyUI Qwen Image Edit workflow with Nunchaku optimization",
     version="1.0.0"
 )
 
@@ -78,45 +74,36 @@ def download_file(url: str, filename: str) -> str:
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to download file from {url}: {str(e)}")
 
-def modify_workflow(workflow, request: GenerateRequest):
+def modify_workflow(workflow, request: EditImageRequest):
     """Modify workflow with user parameters"""
     job_id = str(uuid.uuid4())
     
-    # Download image and audio files
+    # Download image file
     image_filename = f"image_{job_id}.jpg"
-    audio_filename = f"audio_{job_id}.mp3"
-    
     downloaded_image = download_file(request.image_url, image_filename)
-    downloaded_audio = download_file(request.audio_url, audio_filename)
     
-    # Update image input (node 284 - LoadImage)
-    workflow["284"]["inputs"]["image"] = downloaded_image
+    # Update image input (node 78 - LoadImage)
+    workflow["78"]["inputs"]["image"] = downloaded_image
     
-    # Update audio inputs (nodes 125 and 343 - LoadAudio)
-    workflow["125"]["inputs"]["audio"] = downloaded_audio
-    workflow["343"]["inputs"]["audio"] = downloaded_audio
+    # Update text prompts (nodes 76 and 77 - TextEncodeQwenImageEdit)
+    workflow["76"]["inputs"]["prompt"] = request.prompt
+    workflow["77"]["inputs"]["prompt"] = request.negative_prompt
     
-    # Update text prompts (node 241 - WanVideoTextEncodeCached)
-    workflow["241"]["inputs"]["positive_prompt"] = request.prompt
-    workflow["241"]["inputs"]["negative_prompt"] = request.negative_prompt
+    # Update sampling parameters (node 3 - KSampler)
+    if request.seed is not None:
+        workflow["3"]["inputs"]["seed"] = request.seed
+    else:
+        # Generate random seed if not provided
+        workflow["3"]["inputs"]["seed"] = int(time.time() * 1000000) % 2147483647
     
-    # Update sampling parameters (node 128 - WanVideoSampler)
-    workflow["128"]["inputs"]["seed"] = request.seed
-    workflow["128"]["inputs"]["steps"] = request.steps
-    workflow["128"]["inputs"]["cfg"] = request.cfg
+    workflow["3"]["inputs"]["steps"] = request.steps
+    workflow["3"]["inputs"]["cfg"] = request.cfg
     
-    # Update dimensions (nodes 339, 340 - INTConstant)
-    workflow["339"]["inputs"]["value"] = request.width  # Width
-    workflow["340"]["inputs"]["value"] = request.height  # Height
+    # Update image scaling (node 93 - ImageScaleToTotalPixels)
+    workflow["93"]["inputs"]["megapixels"] = request.megapixels
     
-    # Update max frames (node 341 - INTConstant)
-    workflow["341"]["inputs"]["value"] = request.max_frames
-    
-    # Update FPS in video combine (node 131 - VHS_VideoCombine)
-    workflow["131"]["inputs"]["frame_rate"] = request.fps
-    
-    # Update filename prefix for output
-    workflow["131"]["inputs"]["filename_prefix"] = f"InfiniteTalk/api_{job_id}"
+    # Update filename prefix for output (node 60 - SaveImage)
+    workflow["60"]["inputs"]["filename_prefix"] = f"QwenEdit/api_{job_id}"
     
     return workflow, job_id
 
@@ -168,8 +155,8 @@ def wait_for_completion(prompt_id: str, job_id: str):
                 elif msg_type == "executed":
                     d = data.get("data", {})
                     if d.get("prompt_id") == prompt_id:
-                        # Final node is VHS_VideoCombine (id "131") in this workflow
-                        if d.get("node") == "131":
+                        # Final node is SaveImage (id "60") in this workflow
+                        if d.get("node") == "60":
                             job_status[job_id] = {"status": "completed", "progress": 100}
                             break
 
@@ -198,24 +185,24 @@ def wait_for_completion(prompt_id: str, job_id: str):
     except Exception as e:
         job_status[job_id] = {"status": "error", "error": str(e)}
 
-def find_output_video(job_id: str) -> Optional[str]:
-    """Find the generated video file"""
+def find_output_image(job_id: str) -> Optional[str]:
+    """Find the generated image file"""
     output_path = Path(OUTPUT_DIR)
     
-    # The filename pattern is set in the workflow as "InfiniteTalk/api_{job_id}"
+    # The filename pattern is set in the workflow as "QwenEdit/api_{job_id}"
     # ComfyUI typically saves to subdirectories based on the prefix
-    infinitetalk_dir = output_path / "InfiniteTalk"
+    qwenedit_dir = output_path / "QwenEdit"
     
-    # Look for video files with the job ID in both root and InfiniteTalk subdirectory
-    search_paths = [output_path, infinitetalk_dir]
+    # Look for image files with the job ID in both root and QwenEdit subdirectory
+    search_paths = [output_path, qwenedit_dir]
     pattern = f"api_{job_id}"
     
     for search_path in search_paths:
         if not search_path.exists():
             continue
             
-        # Look for video files with the job ID
-        for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv"]:
+        # Look for image files with the job ID
+        for ext in [".png", ".jpg", ".jpeg", ".webp", ".bmp"]:
             # Try exact pattern match first
             for file_path in search_path.glob(f"*{pattern}*{ext}"):
                 return str(file_path)
@@ -229,15 +216,15 @@ def find_output_video(job_id: str) -> Optional[str]:
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"message": "InfiniteTalk Video Generation API", "status": "running"}
+    return {"message": "Qwen Image Edit API", "status": "running"}
 
-@app.post("/generate", response_model=GenerateResponse)
-async def generate_video(request: GenerateRequest, background_tasks: BackgroundTasks):
-    """Generate talking video from image and audio"""
+@app.post("/edit-image", response_model=EditImageResponse)
+async def edit_image(request: EditImageRequest, background_tasks: BackgroundTasks):
+    """Edit image using text prompt"""
     
-    # Validate URLs
-    if not request.image_url or not request.audio_url:
-        raise HTTPException(status_code=400, detail="Both image_url and audio_url are required")
+    # Validate inputs
+    if not request.image_url or not request.prompt:
+        raise HTTPException(status_code=400, detail="Both image_url and prompt are required")
     
     # Load and modify workflow
     workflow = load_workflow()
@@ -253,10 +240,10 @@ async def generate_video(request: GenerateRequest, background_tasks: BackgroundT
     # Start background task to monitor completion
     background_tasks.add_task(wait_for_completion, prompt_id, job_id)
     
-    return GenerateResponse(
+    return EditImageResponse(
         job_id=job_id,
         status="queued",
-        message="Talking video generation started"
+        message="Image editing started"
     )
 
 @app.get("/status/{job_id}")
@@ -269,58 +256,58 @@ async def get_job_status(job_id: str):
     
     # If completed, try to find the output file
     if status["status"] == "completed":
-        video_path = find_output_video(job_id)
-        if video_path and os.path.exists(video_path):
-            status["video_ready"] = True
+        image_path = find_output_image(job_id)
+        if image_path and os.path.exists(image_path):
+            status["image_ready"] = True
             status["download_url"] = f"/download/{job_id}"
-            status["video_path"] = video_path
+            status["image_path"] = image_path
         else:
-            status["video_ready"] = False
-            status["message"] = "Video generation completed but file not found"
+            status["image_ready"] = False
+            status["message"] = "Image editing completed but file not found"
             # Give it a moment and try again - sometimes there's a delay
             await asyncio.sleep(1)
-            video_path = find_output_video(job_id)
-            if video_path and os.path.exists(video_path):
-                status["video_ready"] = True
+            image_path = find_output_image(job_id)
+            if image_path and os.path.exists(image_path):
+                status["image_ready"] = True
                 status["download_url"] = f"/download/{job_id}"
-                status["video_path"] = video_path
-                status["message"] = "Video found after retry"
+                status["image_path"] = image_path
+                status["message"] = "Image found after retry"
     
     return status
 
 @app.get("/download/{job_id}")
-async def download_video(job_id: str):
-    """Download generated video"""
+async def download_image(job_id: str):
+    """Download edited image"""
     if job_id not in job_status:
         raise HTTPException(status_code=404, detail="Job not found")
     
     status = job_status[job_id]["status"]
     if status != "completed":
-        raise HTTPException(status_code=400, detail=f"Video not ready. Current status: {status}")
+        raise HTTPException(status_code=400, detail=f"Image not ready. Current status: {status}")
     
-    video_path = find_output_video(job_id)
-    if not video_path:
-        raise HTTPException(status_code=404, detail="Video file not found in output directory")
+    image_path = find_output_image(job_id)
+    if not image_path:
+        raise HTTPException(status_code=404, detail="Image file not found in output directory")
     
-    if not os.path.exists(video_path):
-        raise HTTPException(status_code=404, detail=f"Video file not found at path: {video_path}")
+    if not os.path.exists(image_path):
+        raise HTTPException(status_code=404, detail=f"Image file not found at path: {image_path}")
     
     # Determine the actual file extension
-    file_ext = Path(video_path).suffix or ".mp4"
-    filename = f"generated_video_{job_id}{file_ext}"
+    file_ext = Path(image_path).suffix or ".png"
+    filename = f"edited_image_{job_id}{file_ext}"
     
     # Determine media type based on extension
     media_type_map = {
-        ".mp4": "video/mp4",
-        ".avi": "video/x-msvideo", 
-        ".mov": "video/quicktime",
-        ".webm": "video/webm",
-        ".mkv": "video/x-matroska"
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp"
     }
-    media_type = media_type_map.get(file_ext.lower(), "video/mp4")
+    media_type = media_type_map.get(file_ext.lower(), "image/png")
     
     return FileResponse(
-        video_path,
+        image_path,
         media_type=media_type,
         filename=filename
     )
@@ -361,10 +348,10 @@ async def debug_job(job_id: str):
     
     status = job_status[job_id].copy()
     
-    # Try to find the video file
-    video_path = find_output_video(job_id)
-    status["searched_video_path"] = video_path
-    status["video_exists"] = video_path and os.path.exists(video_path) if video_path else False
+    # Try to find the image file
+    image_path = find_output_image(job_id)
+    status["searched_image_path"] = image_path
+    status["image_exists"] = image_path and os.path.exists(image_path) if image_path else False
     
     # List all files that might match
     output_path = Path(OUTPUT_DIR)
@@ -389,10 +376,10 @@ async def delete_job(job_id: str):
     del job_status[job_id]
     
     # Try to cleanup output file
-    video_path = find_output_video(job_id)
-    if video_path and os.path.exists(video_path):
+    image_path = find_output_image(job_id)
+    if image_path and os.path.exists(image_path):
         try:
-            os.remove(video_path)
+            os.remove(image_path)
         except OSError:
             pass  # File might be in use
     

@@ -35,10 +35,8 @@ RUN python3 -m venv ${VENV_PATH} && \
         torchaudio==${TAUDIO_VER} \
         xformers==${XFORMERS_VER} \
         onnx==1.16.2 onnxruntime-gpu==1.22.0 numpy==1.26.4 && \
-    curl -L -o /tmp/sageattention.whl \
-        https://huggingface.co/MonsterMMORPG/SECourses_Premium_Flash_Attention/resolve/main/sageattention-2.1.1-cp310-cp310-linux_x86_64.whl && \
-    mv /tmp/sageattention.whl /tmp/sageattention-2.1.1-py3-none-any.whl && \
-    pip install /tmp/sageattention-2.1.1-py3-none-any.whl && rm /tmp/sageattention-2.1.1-py3-none-any.whl && \
+    # Install Nunchaku wheel
+    pip install --no-cache-dir "https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.1dev20250912/nunchaku-1.0.1.dev20250912+torch2.7-cp310-cp310-linux_x86_64.whl" && \
     find ${VENV_PATH} -name '__pycache__' -type d -exec rm -rf {} + && \
     pip cache purge
 
@@ -50,8 +48,7 @@ RUN . ${VENV_PATH}/bin/activate && \
         websocket-client==1.6.4 \
         requests==2.31.0 \
         pydantic==2.5.0 \
-        librosa==0.10.2 \
-        moviepy
+        librosa==0.10.2 
 
 
 # --- ComfyUI Installation ---------------------------------------------------
@@ -64,24 +61,13 @@ RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ComfyUI &&
     mkdir -p models/diffusion_models models/text_encoders models/vae models/loras && \
     # Install custom nodes (handle missing requirements gracefully)
     cd custom_nodes && \
-    git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git comfyui-kjnodes || echo "KJNodes custom node clone failed, continuing..." && \
-    if [ -d "comfyui-kjnodes" ]; then \
-        cd comfyui-kjnodes && \
+    git clone --depth 1 https://github.com/mit-han-lab/ComfyUI-nunchaku nunchaku_nodes || echo  "nunchaku_nodes custom node clone failed, continuing..." && \
+    if [ -d "nunchaku_nodes" ]; then \
+        cd nunchaku_nodes && \
         if [ -f "requirements.txt" ]; then \
-            pip install --no-cache-dir -r requirements.txt || echo "KJNodes requirements install failed, continuing..."; \
+            pip install --no-cache-dir -r requirements.txt || echo "nunchaku_nodes requirements install failed, continuing..."; \
         else \
-            echo "No requirements.txt found for KJNodes custom node, skipping..."; \
-        fi && \
-        cd ..; \
-    fi && \
-    
-    git clone --depth 1 https://github.com/orssorbit/ComfyUI-wanBlockswap.git wanBlockSwap || echo "wanBlockSwap custom node clone failed, continuing..." && \
-    if [ -d "wanBlockSwap" ]; then \
-        cd wanBlockSwap && \
-        if [ -f "requirements.txt" ]; then \
-            pip install --no-cache-dir -r requirements.txt || echo "wanBlockSwap requirements install failed, continuing..."; \
-        else \
-            echo "No requirements.txt found for wanBlockSwap custom node, skipping..."; \
+            echo "No requirements.txt found for nunchaku_nodes custom node, skipping..."; \
         fi && \
         cd ..; \
     fi && \
@@ -110,14 +96,6 @@ RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         python3 python3-dev git curl ca-certificates gpg tini aria2 \
         xz-utils && \
-    # Install static ffmpeg build with NVIDIA codec support
-    cd /tmp && \
-    curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz -o ffmpeg.tar.xz && \
-    tar -xf ffmpeg.tar.xz && \
-    cp ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg && \
-    cp ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/local/bin/ffprobe && \
-    chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
-    rm -rf /tmp/ffmpeg* && \
     \
     # Add repositories and install Caddy & Tailscale
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg && \

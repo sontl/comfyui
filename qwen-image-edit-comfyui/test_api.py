@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for InfiniteTalk API
-Demonstrates how to generate talking videos from image and audio URLs
+Test script for Qwen Image Edit API
 """
 
 import requests
@@ -11,118 +10,127 @@ import json
 # Configuration
 API_BASE_URL = "http://localhost:8189"
 
-def test_api():
-    """Test the InfiniteTalk API with sample image and audio"""
-    
-    # Sample request - replace with your own image and audio URLs
-    request_data = {
-        "image_url": "https://example.com/portrait.jpg",  # Replace with actual image URL
-        "audio_url": "https://example.com/speech.mp3",    # Replace with actual audio URL
-        "prompt": "the person is speaking clearly",
-        "steps": 5,
-        "cfg": 1.0,
-        "width": 960,
-        "height": 528,
-        "max_frames": 101,
-        "fps": 20
-    }
-    
-    print("🎬 Testing InfiniteTalk API")
-    print(f"API URL: {API_BASE_URL}")
-    
-    # Health check
+def test_health_check():
+    """Test the health check endpoint"""
+    print("Testing health check...")
     try:
         response = requests.get(f"{API_BASE_URL}/")
-        print(f"✅ API Health: {response.json()}")
+        print(f"Status: {response.status_code}")
+        print(f"Response: {response.json()}")
+        return response.status_code == 200
     except Exception as e:
-        print(f"❌ API Health Check Failed: {e}")
-        return
-    
-    # Start generation
-    print("\n🚀 Starting video generation...")
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/generate",
-            json=request_data,
-            headers={"Content-Type": "application/json"}
-        )
-        response.raise_for_status()
-        result = response.json()
-        job_id = result["job_id"]
-        print(f"✅ Job started: {job_id}")
-        print(f"Status: {result['status']}")
-        print(f"Message: {result['message']}")
-    except Exception as e:
-        print(f"❌ Failed to start generation: {e}")
-        return
-    
-    # Monitor progress
-    print(f"\n⏳ Monitoring job {job_id}...")
-    while True:
-        try:
-            response = requests.get(f"{API_BASE_URL}/status/{job_id}")
-            response.raise_for_status()
-            status = response.json()
-            
-            print(f"Status: {status['status']}", end="")
-            if "progress" in status:
-                print(f" - Progress: {status['progress']:.1f}%")
-            else:
-                print()
-            
-            if status["status"] == "completed":
-                print("✅ Generation completed!")
-                if status.get("video_ready"):
-                    print(f"📥 Download URL: {API_BASE_URL}/download/{job_id}")
-                    
-                    # Download the video
-                    print("⬇️ Downloading video...")
-                    video_response = requests.get(f"{API_BASE_URL}/download/{job_id}")
-                    video_response.raise_for_status()
-                    
-                    filename = f"talking_video_{job_id}.mp4"
-                    with open(filename, "wb") as f:
-                        f.write(video_response.content)
-                    print(f"✅ Video saved as: {filename}")
-                else:
-                    print("⚠️ Video not ready yet, trying again...")
-                break
-                
-            elif status["status"] == "error":
-                print(f"❌ Generation failed: {status.get('error', 'Unknown error')}")
-                break
-                
-            time.sleep(5)  # Wait 5 seconds before checking again
-            
-        except Exception as e:
-            print(f"❌ Error checking status: {e}")
-            break
+        print(f"Health check failed: {e}")
+        return False
 
-def list_jobs():
-    """List all jobs"""
+def test_image_edit():
+    """Test image editing functionality"""
+    print("\nTesting image edit...")
+    
+    # Test request
+    request_data = {
+        "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
+        "prompt": "change the background to a beautiful sunset over mountains",
+        "negative_prompt": "blurry, low quality, distorted",
+        "steps": 8,
+        "cfg": 1.0,
+        "megapixels": 1.0
+    }
+    
     try:
-        response = requests.get(f"{API_BASE_URL}/jobs")
-        response.raise_for_status()
-        jobs = response.json()
-        print("\n📋 All Jobs:")
-        print(json.dumps(jobs, indent=2))
+        # Submit job
+        response = requests.post(f"{API_BASE_URL}/edit-image", json=request_data)
+        print(f"Submit status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"Error: {response.text}")
+            return False
+            
+        job_data = response.json()
+        job_id = job_data["job_id"]
+        print(f"Job ID: {job_id}")
+        
+        # Poll for completion
+        max_wait = 300  # 5 minutes
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait:
+            status_response = requests.get(f"{API_BASE_URL}/status/{job_id}")
+            if status_response.status_code == 200:
+                status_data = status_response.json()
+                print(f"Status: {status_data['status']}")
+                
+                if "progress" in status_data:
+                    print(f"Progress: {status_data['progress']:.1f}%")
+                
+                if status_data["status"] == "completed":
+                    print("✅ Image editing completed!")
+                    
+                    # Test download
+                    download_response = requests.get(f"{API_BASE_URL}/download/{job_id}")
+                    if download_response.status_code == 200:
+                        with open(f"test_output_{job_id}.png", "wb") as f:
+                            f.write(download_response.content)
+                        print(f"✅ Downloaded edited image: test_output_{job_id}.png")
+                        return True
+                    else:
+                        print(f"❌ Download failed: {download_response.status_code}")
+                        return False
+                        
+                elif status_data["status"] == "error":
+                    print(f"❌ Job failed: {status_data.get('error', 'Unknown error')}")
+                    return False
+                    
+            time.sleep(5)
+        
+        print("❌ Timeout waiting for completion")
+        return False
+        
     except Exception as e:
-        print(f"❌ Failed to list jobs: {e}")
+        print(f"❌ Test failed: {e}")
+        return False
+
+def test_debug_endpoints():
+    """Test debug endpoints"""
+    print("\nTesting debug endpoints...")
+    
+    try:
+        # Test jobs list
+        response = requests.get(f"{API_BASE_URL}/jobs")
+        print(f"Jobs list status: {response.status_code}")
+        
+        # Test files debug
+        response = requests.get(f"{API_BASE_URL}/debug/files")
+        print(f"Debug files status: {response.status_code}")
+        
+        return True
+    except Exception as e:
+        print(f"Debug endpoints failed: {e}")
+        return False
+
+def main():
+    """Run all tests"""
+    print("=== Qwen Image Edit API Test ===\n")
+    
+    tests = [
+        ("Health Check", test_health_check),
+        ("Image Edit", test_image_edit),
+        ("Debug Endpoints", test_debug_endpoints)
+    ]
+    
+    results = []
+    for test_name, test_func in tests:
+        print(f"\n--- {test_name} ---")
+        result = test_func()
+        results.append((test_name, result))
+        print(f"Result: {'✅ PASS' if result else '❌ FAIL'}")
+    
+    print("\n=== Test Summary ===")
+    for test_name, result in results:
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"{test_name}: {status}")
+    
+    all_passed = all(result for _, result in results)
+    print(f"\nOverall: {'✅ ALL TESTS PASSED' if all_passed else '❌ SOME TESTS FAILED'}")
 
 if __name__ == "__main__":
-    print("InfiniteTalk API Test Script")
-    print("=" * 40)
-    
-    # Update these URLs with real image and audio files
-    print("⚠️  IMPORTANT: Update the image_url and audio_url in the script")
-    print("   with real URLs pointing to:")
-    print("   - A portrait image (JPG/PNG)")
-    print("   - An audio file (MP3/WAV)")
-    print()
-    
-    choice = input("Continue with test? (y/n): ").lower()
-    if choice == 'y':
-        test_api()
-        list_jobs()
-    else:
-        print("Test cancelled. Please update the URLs first.")
+    main()

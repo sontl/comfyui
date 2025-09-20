@@ -1,6 +1,6 @@
-# InfiniteTalk  Network Storage - Optimized for Novita.ai
+# Qwen Image Edit ComfyUI - Network Storage Optimized
 
-This is an optimized Docker setup for InfiniteTalk that downloads models from network storage at runtime, making deployment on Novita.ai much faster.
+This is an optimized Docker setup for Qwen Image Edit using ComfyUI with Nunchaku optimization that downloads models from network storage at runtime, making deployment on Novita.ai much faster.
 
 ## Key Optimizations
 
@@ -100,23 +100,20 @@ docker push your-registry/qwen-image-edit-v1:latest
 
 ## API Usage
 
-The InfiniteTalk API generates talking videos from an image and audio file.
+The Qwen Image Edit API edits images using text prompts with advanced AI models.
 
-### Generate Talking Video
+### Edit Image
 
 ```bash
-curl -X POST "http://localhost:8189/generate" \
+curl -X POST "http://localhost:8189/edit-image" \
   -H "Content-Type: application/json" \
   -d '{
-    "image_url": "https://example.com/portrait.jpg",
-    "audio_url": "https://example.com/speech.mp3",
-    "prompt": "the woman is singing",
-    "steps": 5,
+    "image_url": "https://example.com/image.jpg",
+    "prompt": "change the background to a beach scene",
+    "negative_prompt": "blurry, low quality",
+    "steps": 8,
     "cfg": 1.0,
-    "width": 960,
-    "height": 528,
-    "max_frames": 101,
-    "fps": 20
+    "megapixels": 1.0
   }'
 ```
 
@@ -124,17 +121,13 @@ curl -X POST "http://localhost:8189/generate" \
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `image_url` | string | **Required** | URL to portrait image (JPG/PNG) |
-| `audio_url` | string | **Required** | URL to audio file (MP3/WAV) |
-| `prompt` | string | "the woman is singing" | Positive text prompt |
-| `negative_prompt` | string | (default) | Negative text prompt |
-| `seed` | integer | 3 | Random seed for generation |
-| `steps` | integer | 5 | Number of diffusion steps |
+| `image_url` | string | **Required** | URL to input image (JPG/PNG/WebP) |
+| `prompt` | string | **Required** | Text description of desired edits |
+| `negative_prompt` | string | "" | What to avoid in the edit |
+| `seed` | integer | random | Random seed for generation |
+| `steps` | integer | 8 | Number of diffusion steps |
 | `cfg` | float | 1.0 | Classifier-free guidance scale |
-| `width` | integer | 960 | Output video width |
-| `height` | integer | 528 | Output video height |
-| `max_frames` | integer | 101 | Maximum number of frames |
-| `fps` | integer | 20 | Frames per second |
+| `megapixels` | float | 1.0 | Target image size in megapixels |
 
 ### Check Status
 
@@ -142,10 +135,10 @@ curl -X POST "http://localhost:8189/generate" \
 curl "http://localhost:8189/status/{job_id}"
 ```
 
-### Download Video
+### Download Edited Image
 
 ```bash
-curl "http://localhost:8189/download/{job_id}" -o talking_video.mp4
+curl "http://localhost:8189/download/{job_id}" -o edited_image.png
 ```
 
 ### Example Response
@@ -154,7 +147,7 @@ curl "http://localhost:8189/download/{job_id}" -o talking_video.mp4
 {
   "job_id": "abc123-def456-ghi789",
   "status": "queued",
-  "message": "Talking video generation started"
+  "message": "Image editing started"
 }
 ```
 
@@ -176,10 +169,9 @@ curl "http://localhost:8189/download/{job_id}" -o talking_video.mp4
 
 The following models are downloaded automatically:
 
-- **Diffusion Model**: `wan2.2_ti2v_5B_fp16.safetensors` (~5GB)
-- **Text Encoder**: `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (~2GB)
-- **VAE**: `wan2.2_vae.safetensors` (~300MB)
-- **LoRA**: `Wan2_2_5B_InfiniteTalkFullAttn_lora_rank_128_bf16.safetensors` (~500MB)
+- **Qwen Model**: `svdq-int4_r128-qwen-image-lightningv1.1-8steps.safetensors` (~4GB)
+- **CLIP**: `qwen_2.5_vl_7b_fp8_scaled.safetensors` (~7GB)
+- **VAE**: `qwen_image_vae.safetensors` (~300MB)
 
 ## Troubleshooting
 

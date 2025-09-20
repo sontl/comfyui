@@ -1,6 +1,6 @@
-# FastWAN 2.2-5B Deployment Guide for Novita.ai
+# Qwen Image Edit Deployment Guide for Novita.ai
 
-This guide provides step-by-step instructions for deploying FastWAN 2.2-5B on Novita.ai with optimal performance and cost efficiency.
+This guide provides step-by-step instructions for deploying Qwen Image Edit with Nunchaku optimization on Novita.ai with optimal performance and cost efficiency.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ This guide provides step-by-step instructions for deploying FastWAN 2.2-5B on No
 ### Option A: Using the build script
 
 ```bash
-cd fastwan2.2-5b-network-storage
+cd qwen-image-edit-comfyui
 export REGISTRY="your-dockerhub-username"  # or your registry
 ./build.sh
 ```
@@ -21,16 +21,16 @@ export REGISTRY="your-dockerhub-username"  # or your registry
 ### Option B: Manual build and push
 
 ```bash
-cd fastwan2.2-5b-network-storage
+cd qwen-image-edit-comfyui
 
 # Build the image
-docker build -t fastwan-network:latest .
+docker build -t qwen-image-edit:latest .
 
 # Tag for your registry
-docker tag fastwan-network:latest your-registry/fastwan-network:latest
+docker tag qwen-image-edit:latest your-registry/qwen-image-edit:latest
 
 # Push to registry
-docker push your-registry/fastwan-network:latest
+docker push your-registry/qwen-image-edit:latest
 ```
 
 ## Step 2: Deploy on Novita.ai
@@ -41,7 +41,7 @@ docker push your-registry/fastwan-network:latest
 2. **CPU**: 8+ cores
 3. **RAM**: 32GB+
 4. **Storage**: 50GB+ SSD
-5. **Image**: `your-registry/fastwan-network:latest`
+5. **Image**: `your-registry/qwen-image-edit:latest`
 
 ### Environment Variables
 
@@ -87,13 +87,15 @@ Mount a persistent volume to `/workspace/ComfyUI/models` to cache models between
 Check the logs for these key messages:
 
 ```
-[HH:MM:SS] FastWAN 2.2-5B Network Storage Setup Starting...
-[HH:MM:SS] Starting parallel setup and downloads...
-[HH:MM:SS] Downloading models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors...
-[HH:MM:SS] Setup and downloads complete. Starting services...
-[HH:MM:SS] Startup complete!
-[HH:MM:SS] ComfyUI available at: http://localhost:8188
-[HH:MM:SS] API available at: http://localhost:8189
+[HH:MM:SS] === qwenImageEdit Simple Startup ===
+[HH:MM:SS] Step 1: Verifying ComfyUI installation...
+[HH:MM:SS] Step 2: Starting parallel model downloads...
+[HH:MM:SS] ⬇ Starting download: Qwen Nunchaku Model
+[HH:MM:SS] ✓ Downloaded: VAE Model
+[HH:MM:SS] Step 3: Starting services...
+[HH:MM:SS] === Startup Complete ===
+[HH:MM:SS] ComfyUI: http://localhost:8188
+[HH:MM:SS] API: http://localhost:8189
 ```
 
 ## Step 4: Verify Deployment
@@ -105,22 +107,20 @@ Check the logs for these key messages:
 curl http://your-instance-ip:8189/
 
 # Expected response:
-# {"message":"FastWAN 2.2-5B Video Generation API","status":"running"}
+# {"message":"Qwen Image Edit API","status":"running"}
 ```
 
-### Test Video Generation
+### Test Image Editing
 
 ```bash
-curl -X POST "http://your-instance-ip:8189/generate" \
+curl -X POST "http://your-instance-ip:8189/edit-image" \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "A cat playing with a ball of yarn",
+    "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
+    "prompt": "change the background to a beautiful sunset",
     "steps": 8,
     "cfg": 1.0,
-    "width": 1280,
-    "height": 704,
-    "length": 121,
-    "fps": 24
+    "megapixels": 1.0
   }'
 ```
 
@@ -166,16 +166,16 @@ PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 If you encounter OOM errors:
 
-1. Reduce video length: `"length": 61` (instead of 121)
-2. Lower resolution: `"width": 960, "height": 544`
-3. Reduce batch size in workflow
+1. Reduce image size: `"megapixels": 0.5` (instead of 1.0)
+2. Lower steps: `"steps": 4-6`
+3. Enable CPU offloading in the model loader
 
 ### Speed Optimization
 
 For faster generation:
 1. Use fewer steps: `"steps": 4-6`
 2. Lower CFG: `"cfg": 0.5-1.0`
-3. Optimize model loading with persistent storage
+3. Reduce image resolution with megapixels parameter
 
 ## Troubleshooting
 
@@ -232,7 +232,7 @@ Key log patterns to watch:
 Once deployed, access the interactive API documentation at:
 `http://your-instance-ip:8189/docs`
 
-This provides a complete interface for testing and integrating with the FastWAN API.
+This provides a complete interface for testing and integrating with the Qwen Image Edit API.
 
 ## Support
 

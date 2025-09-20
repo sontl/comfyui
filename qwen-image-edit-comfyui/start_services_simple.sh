@@ -7,8 +7,8 @@ COMFY_DIR="/workspace/ComfyUI"
 COMFY_LAUNCH_ARGS=${COMFY_LAUNCH_ARGS:-"--listen 0.0.0.0 --port 8188 --disable-auto-launch --preview-method auto"}
 
 # Model URLs
-VAE_URL="https://huggingface.co/Qwen/Qwen-Image-Edit/resolve/main/vae/diffusion_pytorch_model.safetensors"
-QWEN_NUNCHAKU_URL="https://huggingface.co/nunchaku-tech/nunchaku-qwen-image/resolve/main/svdq-int4_r128-qwen-image-lightningv1.1-8steps.safetensors"
+VAE_URL="https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors"
+QWEN_NUNCHAKU_URL="https://huggingface.co/nunchaku-tech/nunchaku-qwen-image-edit/resolve/main/svdq-int4_r128-qwen-image-edit-lightningv1.0-8steps.safetensors"
 QWEN_CLIP="https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
 
 log() {
@@ -116,7 +116,7 @@ log "🚀 Launching parallel downloads..."
 download_model_async "$VAE_URL" "${COMFY_DIR}/models/vae/qwen_image_vae.safetensors" "VAE Model" &
 VAE_PID=$!
 
-download_model_async "$QWEN_NUNCHAKU_URL" "${COMFY_DIR}/models/diffusion_models/qwen_nunchaku.safetensors" "Qwen Nunchaku Model" &
+download_model_async "$QWEN_NUNCHAKU_URL" "${COMFY_DIR}/models/diffusion_models/svdq-int4_r128-qwen-image-lightningv1.1-8steps.safetensors" "Qwen Nunchaku Model" &
 QWEN_NUNCHAKU_MODEL_PID=$!
 
 download_model_async "$QWEN_CLIP" "${COMFY_DIR}/models/clip/qwen_2.5_vl_7b_fp8_scaled.safetensors" "CLIP Vision" &
