@@ -1,6 +1,6 @@
-# FastWAN 2.2-5B Network Storage - Optimized for Novita.ai
+# WAN 2.2-14B LoRAs Image-to-Video - Optimized for Novita.ai
 
-This is an optimized Docker setup for FastWAN 2.2-5B that downloads models from network storage at runtime, making deployment on Novita.ai much faster.
+This is an optimized Docker setup for WAN 2.2-14B with LoRAs that converts input images to videos using advanced diffusion models. The setup downloads models from network storage at runtime, making deployment on Novita.ai much faster.
 
 ## Key Optimizations
 
@@ -98,21 +98,41 @@ docker push your-registry/wan2.2-14b-loras-v1:latest
 
 ## API Usage
 
-### Generate Video
+### Generate Video from Image
 
 ```bash
 curl -X POST "http://localhost:8189/generate" \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "A cat playing with a ball of yarn",
-    "steps": 8,
-    "cfg": 1.0,
-    "width": 1280,
-    "height": 704,
-    "length": 121,
-    "fps": 24
+    "image_url": "https://example.com/path/to/image.jpg",
+    "prompt": "the girl is looking to the phone and feel happy, then she jump very happy",
+    "negative_prompt": "slow, slow motion, 色调艳丽，过曝，静态，细节模糊不清",
+    "steps": 6,
+    "cfg_high_noise": 3.5,
+    "cfg_low_noise": 3.5,
+    "width": 640,
+    "height": 640,
+    "frames": 81,
+    "fps": 16,
+    "seed": 1
   }'
 ```
+
+### Request Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `image_url` | string (URL) | **Required** | URL of the input image to animate |
+| `prompt` | string | **Required** | Text description of the desired animation |
+| `negative_prompt` | string | Default provided | What to avoid in the animation |
+| `steps` | integer | 6 | Number of diffusion steps (higher = better quality, slower) |
+| `cfg_high_noise` | float | 3.5 | CFG scale for high noise model |
+| `cfg_low_noise` | float | 3.5 | CFG scale for low noise model |
+| `width` | integer | 640 | Output video width (will be resized to this) |
+| `height` | integer | 640 | Output video height (will be resized to this) |
+| `frames` | integer | 81 | Number of frames in output video |
+| `fps` | integer | 16 | Frames per second of output video |
+| `seed` | integer | 1 | Random seed for reproducible results |
 
 ### Check Status
 
@@ -137,10 +157,13 @@ curl "http://localhost:8189/download/{job_id}" -o video.mp4
 
 The following models are downloaded automatically:
 
-- **Diffusion Model**: `wan2.2_ti2v_5B_fp16.safetensors` (~5GB)
-- **Text Encoder**: `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (~2GB)
-- **VAE**: `wan2.2_vae.safetensors` (~300MB)
-- **LoRA**: `Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors` (~500MB)
+- **High Noise Model**: `wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors` (~7GB)
+- **Low Noise Model**: `wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors` (~7GB)
+- **Text Encoder**: `umt5_xxl_fp16.safetensors` (~2GB)
+- **VAE**: `wan_2.1_vae.safetensors` (~300MB)
+- **LoRAs**: 
+  - `high_noise_model.safetensors` (~500MB)
+  - `low_noise_model.safetensors` (~500MB)
 
 ## Troubleshooting
 
@@ -318,10 +341,14 @@ After deployment, check:
 # Health check
 curl http://your-instance-ip:8189/
 
-# Generate test video
+# Generate test video from image
 curl -X POST "http://your-instance-ip:8189/generate" \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "A cat playing with yarn", "steps": 4}'
+  -d '{
+    "image_url": "https://example.com/portrait.jpg",
+    "prompt": "person smiling and waving at camera",
+    "steps": 6
+  }'
 ```
 
 ## Rollback Plan

@@ -1,6 +1,6 @@
-# FastWAN 2.2-5B Deployment Guide for Novita.ai
+# WAN 2.2-14B LoRAs Image-to-Video Deployment Guide for Novita.ai
 
-This guide provides step-by-step instructions for deploying FastWAN 2.2-5B on Novita.ai with optimal performance and cost efficiency.
+This guide provides step-by-step instructions for deploying WAN 2.2-14B LoRAs image-to-video service on Novita.ai with optimal performance and cost efficiency.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ This guide provides step-by-step instructions for deploying FastWAN 2.2-5B on No
 ### Option A: Using the build script
 
 ```bash
-cd fastwan2.2-5b-network-storage
+cd wan2.2-14b-loras-v1
 export REGISTRY="your-dockerhub-username"  # or your registry
 ./build.sh
 ```
@@ -21,16 +21,19 @@ export REGISTRY="your-dockerhub-username"  # or your registry
 ### Option B: Manual build and push
 
 ```bash
-cd fastwan2.2-5b-network-storage
+cd wan2.2-14b-loras-v1
 
 # Build the image
-docker build -t fastwan-network:latest .
+docker build -t wan22-14b-loras:latest .
 
 # Tag for your registry
-docker tag fastwan-network:latest your-registry/fastwan-network:latest
+docker tag wan22-14b-loras:latest your-registry/wan22-14b-loras:latest
 
 # Push to registry
-docker push your-registry/fastwan-network:latest
+docker push your-registry/wan22-14b-loras:latest
+
+# Fast
+docker build --tag ghcr.io/sontl/wan2.2-14b-loras-v1:latest --push . 
 ```
 
 ## Step 2: Deploy on Novita.ai
@@ -41,7 +44,7 @@ docker push your-registry/fastwan-network:latest
 2. **CPU**: 8+ cores
 3. **RAM**: 32GB+
 4. **Storage**: 50GB+ SSD
-5. **Image**: `your-registry/fastwan-network:latest`
+5. **Image**: `your-registry/wan22-14b-loras:latest`
 
 ### Environment Variables
 
@@ -87,9 +90,10 @@ Mount a persistent volume to `/workspace/ComfyUI/models` to cache models between
 Check the logs for these key messages:
 
 ```
-[HH:MM:SS] FastWAN 2.2-5B Network Storage Setup Starting...
+[HH:MM:SS] WAN 2.2-14B LoRAs Setup Starting...
 [HH:MM:SS] Starting parallel setup and downloads...
-[HH:MM:SS] Downloading models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors...
+[HH:MM:SS] Downloading models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors...
+[HH:MM:SS] Downloading models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors...
 [HH:MM:SS] Setup and downloads complete. Starting services...
 [HH:MM:SS] Startup complete!
 [HH:MM:SS] ComfyUI available at: http://localhost:8188
@@ -105,22 +109,24 @@ Check the logs for these key messages:
 curl http://your-instance-ip:8189/
 
 # Expected response:
-# {"message":"FastWAN 2.2-5B Video Generation API","status":"running"}
+# {"message":"WAN 2.2-14B LoRAs Image-to-Video API","status":"running"}
 ```
 
-### Test Video Generation
+### Test Image-to-Video Generation
 
 ```bash
 curl -X POST "http://your-instance-ip:8189/generate" \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "A cat playing with a ball of yarn",
-    "steps": 8,
-    "cfg": 1.0,
-    "width": 1280,
-    "height": 704,
-    "length": 121,
-    "fps": 24
+    "image_url": "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=640",
+    "prompt": "person smiling and nodding gently",
+    "steps": 6,
+    "cfg_high_noise": 3.5,
+    "cfg_low_noise": 3.5,
+    "width": 640,
+    "height": 640,
+    "frames": 81,
+    "fps": 16
   }'
 ```
 
@@ -166,16 +172,17 @@ PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 If you encounter OOM errors:
 
-1. Reduce video length: `"length": 61` (instead of 121)
-2. Lower resolution: `"width": 960, "height": 544`
+1. Reduce video frames: `"frames": 49` (instead of 81)
+2. Lower resolution: `"width": 512, "height": 512`
 3. Reduce batch size in workflow
 
 ### Speed Optimization
 
 For faster generation:
 1. Use fewer steps: `"steps": 4-6`
-2. Lower CFG: `"cfg": 0.5-1.0`
+2. Lower CFG values: `"cfg_high_noise": 2.5, "cfg_low_noise": 2.5`
 3. Optimize model loading with persistent storage
+4. Use smaller image resolutions for input
 
 ## Troubleshooting
 
@@ -232,7 +239,9 @@ Key log patterns to watch:
 Once deployed, access the interactive API documentation at:
 `http://your-instance-ip:8189/docs`
 
-This provides a complete interface for testing and integrating with the FastWAN API.
+This provides a complete interface for testing and integrating with the WAN 2.2-14B LoRAs Image-to-Video API.
+
+For detailed API usage examples, see the `API_USAGE.md` file in this directory.
 
 ## Support
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-FastAPI wrapper for ComfyUI FastWAN 2.2-5B workflow
-Provides a simple REST API to generate videos from text prompts
+FastAPI wrapper for ComfyUI WAN 2.2-14B LoRAs workflow
+Provides a simple REST API to generate videos from input images
 """
 
 import json
@@ -11,30 +11,35 @@ import asyncio
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
+from urllib.request import urlretrieve
 
 import requests
 import websocket
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 import uvicorn
 
 # Configuration
 COMFYUI_URL = "http://localhost:8188"
 WORKFLOW_PATH = "/workspace/workflow_api.json"
 OUTPUT_DIR = "/workspace/ComfyUI/output"
+INPUT_DIR = "/workspace/ComfyUI/input"
 API_PORT = 8189
 
 class GenerateRequest(BaseModel):
+    image_url: HttpUrl
     prompt: str
-    negative_prompt: Optional[str] = None
-    seed: Optional[int] = None
-    steps: Optional[int] = 8
-    cfg: Optional[float] = 1.0
-    width: Optional[int] = 1280
-    height: Optional[int] = 704
-    length: Optional[int] = 121
-    fps: Optional[int] = 24
+    negative_prompt: Optional[str] = "slow, slow motion, 色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+    seed: Optional[int] = 1
+    steps: Optional[int] = 6
+    cfg_high_noise: Optional[float] = 3.5
+    cfg_low_noise: Optional[float] = 3.5
+    width: Optional[int] = 640
+    height: Optional[int] = 640
+    frames: Optional[int] = 81
+    fps: Optional[int] = 16
 
 class GenerateResponse(BaseModel):
     job_id: str
@@ -42,8 +47,8 @@ class GenerateResponse(BaseModel):
     message: str
 
 app = FastAPI(
-    title="FastWAN 2.2-5B Video Generation API",
-    description="REST API wrapper for ComfyUI FastWAN 2.2-5B workflow",
+    title="WAN 2.2-14B LoRAs Image-to-Video API",
+    description="REST API wrapper for ComfyUI WAN 2.2-14B LoRAs image-to-video workflow",
     version="1.0.0"
 )
 
@@ -58,40 +63,77 @@ def load_workflow():
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="Workflow file not found")
 
-def modify_workflow(workflow, request: GenerateRequest):
+def download_image(image_url: str, job_id: str) -> str:
+    """Download image from URL and save to ComfyUI input directory"""
+    try:
+        # Parse URL to get filename
+        parsed_url = urlparse(str(image_url))
+        original_filename = os.path.basename(parsed_url.path)
+        
+        # Generate unique filename
+        if not original_filename or '.' not in original_filename:
+            file_extension = '.jpg'  # Default extension
+        else:
+            file_extension = '.' + original_filename.split('.')[-1]
+        
+        filename = f"{job_id}_input{file_extension}"
+        filepath = os.path.join(INPUT_DIR, filename)
+        
+        # Ensure input directory exists
+        os.makedirs(INPUT_DIR, exist_ok=True)
+        
+        # Download the image
+        urlretrieve(str(image_url), filepath)
+        
+        return filename
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to download image: {str(e)}")
+
+def modify_workflow(workflow, request: GenerateRequest, image_filename: str):
     """Modify workflow with user parameters"""
-    # Update positive prompt (node 6)
-    workflow["6"]["inputs"]["text"] = request.prompt
-    
-    # Update negative prompt if provided (node 7)
-    if request.negative_prompt:
-        workflow["7"]["inputs"]["text"] = request.negative_prompt
-    
-    # Update sampling parameters (node 3)
-    if request.seed:
-        workflow["3"]["inputs"]["seed"] = request.seed
-    if request.steps:
-        workflow["3"]["inputs"]["steps"] = request.steps
-    if request.cfg:
-        workflow["3"]["inputs"]["cfg"] = request.cfg
-    
-    # Update video dimensions and length (node 55)
-    if request.width:
-        workflow["55"]["inputs"]["width"] = request.width
-    if request.height:
-        workflow["55"]["inputs"]["height"] = request.height
-    if request.length:
-        workflow["55"]["inputs"]["length"] = request.length
-    
-    # Update FPS (node 57)
-    if request.fps:
-        workflow["57"]["inputs"]["fps"] = request.fps
-    
-    # Generate unique filename prefix
     job_id = str(uuid.uuid4())
-    workflow["58"]["inputs"]["filename_prefix"] = f"FastWan/api_{job_id}"
     
-    return workflow, job_id
+    # Validate workflow has required nodes
+    required_nodes = ["3", "4", "34", "36", "39", "101", "103", "106"]
+    for node_id in required_nodes:
+        if node_id not in workflow:
+            raise HTTPException(status_code=500, detail=f"Workflow missing required node: {node_id}")
+    
+    try:
+        # Update input image (node 3 - LoadImage)
+        workflow["3"]["inputs"]["image"] = image_filename
+        
+        # Update positive prompt (node 34 - CLIPTextEncode)
+        workflow["34"]["inputs"]["text"] = request.prompt
+        
+        # Update negative prompt (node 4 - CLIPTextEncode)
+        workflow["4"]["inputs"]["text"] = request.negative_prompt
+        
+        # Update sampling parameters (node 36 - WanMoeKSamplerAdvanced)
+        workflow["36"]["inputs"]["cfg_high_noise"] = request.cfg_high_noise
+        workflow["36"]["inputs"]["cfg_low_noise"] = request.cfg_low_noise
+        workflow["36"]["inputs"]["noise_seed"] = request.seed
+        
+        # Update steps (node 101 - PrimitiveInt)
+        workflow["101"]["inputs"]["value"] = request.steps
+        
+        # Update frames (node 103 - PrimitiveInt) 
+        workflow["103"]["inputs"]["value"] = request.frames
+        
+        # Update image dimensions (node 106 - ImageResizeKJv2)
+        workflow["106"]["inputs"]["width"] = request.width
+        workflow["106"]["inputs"]["height"] = request.height
+        
+        # Update FPS (node 39 - VHS_VideoCombine)
+        workflow["39"]["inputs"]["frame_rate"] = request.fps
+        
+        # Generate unique filename prefix for output
+        workflow["39"]["inputs"]["filename_prefix"] = f"wan22_t2v/wan22_t2v_{job_id}"
+        
+        return workflow, job_id
+        
+    except KeyError as e:
+        raise HTTPException(status_code=500, detail=f"Error modifying workflow node {e}: Node structure mismatch")
 
 def queue_workflow(workflow, client_id: str):
     """Queue workflow in ComfyUI with the provided client_id"""
@@ -141,8 +183,8 @@ def wait_for_completion(prompt_id: str, job_id: str):
                 elif msg_type == "executed":
                     d = data.get("data", {})
                     if d.get("prompt_id") == prompt_id:
-                        # Final node is SaveVideo (id "58") in this workflow
-                        if d.get("node") == "58":
+                        # Final node is VHS_VideoCombine (id "39") in this workflow
+                        if d.get("node") == "39":
                             job_status[job_id] = {"status": "completed", "progress": 100}
                             break
 
@@ -175,13 +217,13 @@ def find_output_video(job_id: str) -> Optional[str]:
     """Find the generated video file"""
     output_path = Path(OUTPUT_DIR)
     
-    # The filename pattern is set in the workflow as "FastWan/api_{job_id}"
+    # The filename pattern is set in the workflow as "wan22_t2v/wan22_t2v_{job_id}"
     # ComfyUI typically saves to subdirectories based on the prefix
-    fastwan_dir = output_path / "FastWan"
+    wan22_dir = output_path / "wan22_t2v"
     
-    # Look for video files with the job ID in both root and FastWan subdirectory
-    search_paths = [output_path, fastwan_dir]
-    pattern = f"api_{job_id}"
+    # Look for video files with the job ID in both root and wan22_t2v subdirectory
+    search_paths = [output_path, wan22_dir]
+    pattern = f"wan22_t2v_{job_id}"
     
     for search_path in search_paths:
         if not search_path.exists():
@@ -193,7 +235,7 @@ def find_output_video(job_id: str) -> Optional[str]:
             for file_path in search_path.glob(f"*{pattern}*{ext}"):
                 return str(file_path)
             
-            # Also try without the "api_" prefix in case ComfyUI strips it
+            # Also try without the "wan22_t2v_" prefix in case ComfyUI strips it
             for file_path in search_path.glob(f"*{job_id}*{ext}"):
                 return str(file_path)
     
@@ -202,22 +244,34 @@ def find_output_video(job_id: str) -> Optional[str]:
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"message": "FastWAN 2.2-5B Video Generation API", "status": "running"}
+    return {"message": "WAN 2.2-14B LoRAs Image-to-Video API", "status": "running"}
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_video(request: GenerateRequest, background_tasks: BackgroundTasks):
-    """Generate video from text prompt"""
+    """Generate video from input image and text prompt"""
+    
+    # Download the input image
+    try:
+        job_id = str(uuid.uuid4())
+        image_filename = download_image(request.image_url, job_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to process image: {str(e)}")
     
     # Load and modify workflow
     workflow = load_workflow()
-    modified_workflow, job_id = modify_workflow(workflow, request)
+    modified_workflow, job_id = modify_workflow(workflow, request, image_filename)
     
     # Queue workflow with client_id matching websocket listener (job_id)
     queue_response = queue_workflow(modified_workflow, job_id)
     prompt_id = queue_response["prompt_id"]
     
     # Initialize job status
-    job_status[job_id] = {"status": "queued", "prompt_id": prompt_id, "progress": 0}
+    job_status[job_id] = {
+        "status": "queued", 
+        "prompt_id": prompt_id, 
+        "progress": 0,
+        "input_image": image_filename
+    }
     
     # Start background task to monitor completion
     background_tasks.add_task(wait_for_completion, prompt_id, job_id)
@@ -225,7 +279,7 @@ async def generate_video(request: GenerateRequest, background_tasks: BackgroundT
     return GenerateResponse(
         job_id=job_id,
         status="queued",
-        message="Video generation started"
+        message="Image-to-video generation started"
     )
 
 @app.get("/status/{job_id}")
@@ -368,8 +422,9 @@ async def delete_job(job_id: str):
     return {"message": "Job deleted"}
 
 if __name__ == "__main__":
-    # Ensure output directory exists
+    # Ensure directories exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(INPUT_DIR, exist_ok=True)
     
     # Start the API server
     uvicorn.run(
