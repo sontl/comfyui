@@ -36,7 +36,7 @@ RUN python3 -m venv ${VENV_PATH} && \
         xformers==${XFORMERS_VER} \
         onnx==1.16.2 onnxruntime-gpu==1.22.0 numpy==1.26.4 && \
     # Install Nunchaku wheel
-    pip install --no-cache-dir "https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.1dev20250912/nunchaku-1.0.1.dev20250912+torch2.7-cp310-cp310-linux_x86_64.whl" && \
+    pip install --no-cache-dir "https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.1dev20250924/nunchaku-1.0.1.dev20250924+torch2.7-cp310-cp310-linux_x86_64.whl" && \
     find ${VENV_PATH} -name '__pycache__' -type d -exec rm -rf {} + && \
     pip cache purge
 
@@ -48,7 +48,8 @@ RUN . ${VENV_PATH}/bin/activate && \
         websocket-client==1.6.4 \
         requests==2.31.0 \
         pydantic==2.5.0 \
-        librosa==0.10.2 
+        librosa==0.10.2  \
+        opencv-python 
 
 
 # --- ComfyUI Installation ---------------------------------------------------

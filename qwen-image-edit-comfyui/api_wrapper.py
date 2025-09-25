@@ -29,12 +29,14 @@ INPUT_DIR = "/workspace/ComfyUI/input"
 API_PORT = 8189
 
 class EditImageRequest(BaseModel):
-    image_url: str
+    image1_url: str  # Primary image (required)
     prompt: str
+    image2_url: Optional[str] = None  # Secondary image (optional)
+    image3_url: Optional[str] = None  # Tertiary image (optional)
     negative_prompt: Optional[str] = ""
     seed: Optional[int] = None
-    steps: Optional[int] = 8
-    cfg: Optional[float] = 1.0
+    steps: Optional[int] = 40
+    cfg: Optional[float] = 4.0
     megapixels: Optional[float] = 1.0
 
 class EditImageResponse(BaseModel):
@@ -43,9 +45,9 @@ class EditImageResponse(BaseModel):
     message: str
 
 app = FastAPI(
-    title="Qwen Image Edit API",
-    description="REST API wrapper for ComfyUI Qwen Image Edit workflow with Nunchaku optimization",
-    version="1.0.0"
+    title="Qwen Image Edit Plus API",
+    description="REST API wrapper for ComfyUI Qwen Image Edit workflow with multi-image support and Nunchaku optimization",
+    version="2.0.0"
 )
 
 # Store job status
@@ -78,16 +80,34 @@ def modify_workflow(workflow, request: EditImageRequest):
     """Modify workflow with user parameters"""
     job_id = str(uuid.uuid4())
     
-    # Download image file
-    image_filename = f"image_{job_id}.jpg"
-    downloaded_image = download_file(request.image_url, image_filename)
+    # Download primary image (required)
+    image1_filename = f"image1_{job_id}.jpg"
+    downloaded_image1 = download_file(request.image1_url, image1_filename)
     
-    # Update image input (node 78 - LoadImage)
-    workflow["78"]["inputs"]["image"] = downloaded_image
+    # Update primary image input (node 78 - LoadImage for image1)
+    workflow["78"]["inputs"]["image"] = downloaded_image1
     
-    # Update text prompts (nodes 76 and 77 - TextEncodeQwenImageEdit)
-    workflow["76"]["inputs"]["prompt"] = request.prompt
-    workflow["77"]["inputs"]["prompt"] = request.negative_prompt
+    # Download and update secondary image (optional)
+    if request.image2_url:
+        image2_filename = f"image2_{job_id}.jpg"
+        downloaded_image2 = download_file(request.image2_url, image2_filename)
+        workflow["106"]["inputs"]["image"] = downloaded_image2
+    else:
+        # Use a default placeholder or the same image as image1
+        workflow["106"]["inputs"]["image"] = downloaded_image1
+    
+    # Download and update tertiary image (optional)
+    if request.image3_url:
+        image3_filename = f"image3_{job_id}.jpg"
+        downloaded_image3 = download_file(request.image3_url, image3_filename)
+        workflow["108"]["inputs"]["image"] = downloaded_image3
+    else:
+        # Use a default placeholder or the same image as image1
+        workflow["108"]["inputs"]["image"] = downloaded_image1
+    
+    # Update text prompts (nodes 110 and 111 - TextEncodeQwenImageEditPlus)
+    workflow["110"]["inputs"]["prompt"] = request.negative_prompt
+    workflow["111"]["inputs"]["prompt"] = request.prompt
     
     # Update sampling parameters (node 3 - KSampler)
     if request.seed is not None:
@@ -216,15 +236,15 @@ def find_output_image(job_id: str) -> Optional[str]:
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"message": "Qwen Image Edit API", "status": "running"}
+    return {"message": "Qwen Image Edit Plus API", "status": "running", "version": "2.0.0", "features": ["multi-image-support", "nunchaku-optimization"]}
 
 @app.post("/edit-image", response_model=EditImageResponse)
 async def edit_image(request: EditImageRequest, background_tasks: BackgroundTasks):
-    """Edit image using text prompt"""
+    """Edit images using text prompt with support for up to 3 input images"""
     
     # Validate inputs
-    if not request.image_url or not request.prompt:
-        raise HTTPException(status_code=400, detail="Both image_url and prompt are required")
+    if not request.image1_url or not request.prompt:
+        raise HTTPException(status_code=400, detail="Both image1_url and prompt are required")
     
     # Load and modify workflow
     workflow = load_workflow()

@@ -26,13 +26,13 @@ def test_image_edit():
     """Test image editing functionality"""
     print("\nTesting image edit...")
     
-    # Test request
+    # Test request (updated for new API)
     request_data = {
-        "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
+        "image1_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
         "prompt": "change the background to a beautiful sunset over mountains",
         "negative_prompt": "blurry, low quality, distorted",
-        "steps": 8,
-        "cfg": 1.0,
+        "steps": 20,
+        "cfg": 3.0,
         "megapixels": 1.0
     }
     
@@ -109,11 +109,11 @@ def test_debug_endpoints():
 
 def main():
     """Run all tests"""
-    print("=== Qwen Image Edit API Test ===\n")
+    print("=== Qwen Image Edit Plus API Test ===\n")
     
     tests = [
         ("Health Check", test_health_check),
-        ("Image Edit", test_image_edit),
+        ("Single Image Edit", test_image_edit),
         ("Debug Endpoints", test_debug_endpoints)
     ]
     

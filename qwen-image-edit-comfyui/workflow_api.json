@@ -1,9 +1,9 @@
 {
   "3": {
     "inputs": {
-      "seed": 801659064847822,
-      "steps": 8,
-      "cfg": 1,
+      "seed": 1103680903187231,
+      "steps": 40,
+      "cfg": 4,
       "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1,
@@ -12,11 +12,11 @@
         0
       ],
       "positive": [
-        "76",
+        "111",
         0
       ],
       "negative": [
-        "77",
+        "110",
         0
       ],
       "latent_image": [
@@ -82,7 +82,7 @@
     "inputs": {
       "shift": 3,
       "model": [
-        "101",
+        "115",
         0
       ]
     },
@@ -104,51 +104,9 @@
       "title": "CFGNorm"
     }
   },
-  "76": {
-    "inputs": {
-      "prompt": "",
-      "clip": [
-        "38",
-        0
-      ],
-      "vae": [
-        "39",
-        0
-      ],
-      "image": [
-        "93",
-        0
-      ]
-    },
-    "class_type": "TextEncodeQwenImageEdit",
-    "_meta": {
-      "title": "TextEncodeQwenImageEdit"
-    }
-  },
-  "77": {
-    "inputs": {
-      "prompt": "",
-      "clip": [
-        "38",
-        0
-      ],
-      "vae": [
-        "39",
-        0
-      ],
-      "image": [
-        "93",
-        0
-      ]
-    },
-    "class_type": "TextEncodeQwenImageEdit",
-    "_meta": {
-      "title": "TextEncodeQwenImageEdit"
-    }
-  },
   "78": {
     "inputs": {
-      "image": "Whisk_f533a9cbdf5b8f49fda47c59981ddb40dr.jpeg"
+      "image": "man.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -185,11 +143,98 @@
       "title": "Scale Image to Total Pixels"
     }
   },
-  "101": {
+  "106": {
     "inputs": {
-      "model_name": "svdq-int4_r128-qwen-image-lightningv1.1-8steps.safetensors",
+      "image": "puppy.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "108": {
+    "inputs": {
+      "image": "sofa.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "110": {
+    "inputs": {
+      "prompt": "",
+      "clip": [
+        "38",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "93",
+        0
+      ],
+      "image2": [
+        "106",
+        0
+      ],
+      "image3": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "111": {
+    "inputs": {
+      "prompt": "Let the man in image 1 lie on the sofa in image 3, and let the puppy in image 2 lie on the floor to sleep.",
+      "clip": [
+        "38",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "93",
+        0
+      ],
+      "image2": [
+        "106",
+        0
+      ],
+      "image3": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "112": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  },
+  "115": {
+    "inputs": {
+      "model_name": "svdq-int4_r128-qwen-image-edit-2509.safetensors",
       "cpu_offload": "enable",
-      "num_blocks_on_gpu": 1,
+      "num_blocks_on_gpu": 20,
       "use_pin_memory": "disable"
     },
     "class_type": "NunchakuQwenImageDiTLoader",

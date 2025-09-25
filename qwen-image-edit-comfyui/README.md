@@ -1,14 +1,17 @@
-# Qwen Image Edit ComfyUI - Network Storage Optimized
+# Qwen Image Edit Plus ComfyUI - Multi-Image Support
 
-This is an optimized Docker setup for Qwen Image Edit using ComfyUI with Nunchaku optimization that downloads models from network storage at runtime, making deployment on Novita.ai much faster.
+This is an optimized Docker setup for Qwen Image Edit Plus using ComfyUI with Nunchaku optimization that supports editing with up to 3 input images. Models are downloaded from network storage at runtime, making deployment on Novita.ai much faster.
 
-## Key Optimizations
+## Key Features
 
+- **Multi-Image Support**: Edit with up to 3 input images (1 required, 2 optional)
+- **Advanced Prompting**: Supports complex multi-image composition prompts
 - **Lightweight Image**: Only ~2-3GB vs 15-20GB for the consolidated version
 - **Fast Downloads**: Uses aria2c with 16 parallel connections for model downloads
 - **Parallel Setup**: Downloads models while setting up ComfyUI simultaneously
 - **Smart Caching**: Checks if models exist before downloading
 - **RTX 4090 Optimized**: Environment variables tuned for RTX 4090 performance
+- **Nunchaku Optimization**: Enhanced performance with optimized inference
 
 ## Build Options
 
@@ -100,19 +103,36 @@ docker push your-registry/qwen-image-edit-v1:latest
 
 ## API Usage
 
-The Qwen Image Edit API edits images using text prompts with advanced AI models.
+The Qwen Image Edit Plus API edits images using text prompts with support for up to 3 input images, enabling complex multi-image compositions.
 
-### Edit Image
+### Single Image Edit
 
 ```bash
 curl -X POST "http://localhost:8189/edit-image" \
   -H "Content-Type: application/json" \
   -d '{
-    "image_url": "https://example.com/image.jpg",
+    "image1_url": "https://example.com/image.jpg",
     "prompt": "change the background to a beach scene",
     "negative_prompt": "blurry, low quality",
-    "steps": 8,
-    "cfg": 1.0,
+    "steps": 40,
+    "cfg": 4.0,
+    "megapixels": 1.0
+  }'
+```
+
+### Multi-Image Edit
+
+```bash
+curl -X POST "http://localhost:8189/edit-image" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image1_url": "https://example.com/person.jpg",
+    "image2_url": "https://example.com/dog.jpg", 
+    "image3_url": "https://example.com/sofa.jpg",
+    "prompt": "Let the person in image 1 sit on the sofa in image 3, with the dog in image 2 lying on the floor",
+    "negative_prompt": "blurry, low quality, distorted",
+    "steps": 40,
+    "cfg": 4.0,
     "megapixels": 1.0
   }'
 ```
@@ -121,12 +141,14 @@ curl -X POST "http://localhost:8189/edit-image" \
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `image_url` | string | **Required** | URL to input image (JPG/PNG/WebP) |
-| `prompt` | string | **Required** | Text description of desired edits |
+| `image1_url` | string | **Required** | URL to primary input image (JPG/PNG/WebP) |
+| `image2_url` | string | *Optional* | URL to secondary input image |
+| `image3_url` | string | *Optional* | URL to tertiary input image |
+| `prompt` | string | **Required** | Text description of desired edits (can reference images by number) |
 | `negative_prompt` | string | "" | What to avoid in the edit |
 | `seed` | integer | random | Random seed for generation |
-| `steps` | integer | 8 | Number of diffusion steps |
-| `cfg` | float | 1.0 | Classifier-free guidance scale |
+| `steps` | integer | 40 | Number of diffusion steps |
+| `cfg` | float | 4.0 | Classifier-free guidance scale |
 | `megapixels` | float | 1.0 | Target image size in megapixels |
 
 ### Check Status
@@ -154,9 +176,19 @@ curl "http://localhost:8189/download/{job_id}" -o edited_image.png
 ### Status Values
 
 - `queued`: Job is waiting to start
-- `processing`: Video is being generated
-- `completed`: Video is ready for download
+- `processing`: Image is being generated
+- `completed`: Image is ready for download
 - `error`: Generation failed
+
+### Multi-Image Prompting Tips
+
+When using multiple images, reference them in your prompt:
+- "the person in image 1"
+- "the background from image 2" 
+- "combine the foreground of image 1 with image 3"
+- "place the object from image 2 into the scene from image 1"
+
+The workflow uses TextEncodeQwenImageEditPlus which understands spatial relationships and can intelligently compose elements from multiple source images.
 
 ## Performance Tips
 
@@ -169,9 +201,11 @@ curl "http://localhost:8189/download/{job_id}" -o edited_image.png
 
 The following models are downloaded automatically:
 
-- **Qwen Model**: `svdq-int4_r128-qwen-image-lightningv1.1-8steps.safetensors` (~4GB)
-- **CLIP**: `qwen_2.5_vl_7b_fp8_scaled.safetensors` (~7GB)
+- **Qwen DiT Model**: `svdq-int4_r128-qwen-image-edit-2509.safetensors` (~4GB)
+- **CLIP**: `qwen_2.5_vl_7b_fp8_scaled.safetensors` (~7GB)  
 - **VAE**: `qwen_image_vae.safetensors` (~300MB)
+
+The new workflow uses the updated Qwen Image Edit model with enhanced multi-image capabilities.
 
 ## Troubleshooting
 
@@ -193,12 +227,14 @@ The following models are downloaded automatically:
 ## File Structure
 
 ```
-qwen-image-edit-v1/
+qwen-image-edit-comfyui/
 ├── Dockerfile                    # Optimized Docker image
-├── start_services.sh            # Original startup script
-├── start_services_consolidated.sh # Optimized startup script
-├── api_wrapper.py               # FastAPI wrapper
-├── workflow_api.json            # ComfyUI workflow
+├── start_services_simple.sh     # Simplified startup script
+├── api_wrapper.py               # FastAPI wrapper with multi-image support
+├── workflow_api.json            # ComfyUI workflow (TextEncodeQwenImageEditPlus)
+├── test_api.py                  # Basic API test script
+├── test_api_multi_image.py      # Comprehensive multi-image test suite
+├── API_USAGE.md                 # Detailed API documentation
 ├── Caddyfile                    # Reverse proxy config
 └── README.md                    # This file
 ```
@@ -345,15 +381,43 @@ After deployment, check:
 4. **No restarts**: Container stays running without crashes
 
 ## Test API
-```bash
-# Health check
-curl http://your-instance-ip:8189/
 
-# Generate test video
-curl -X POST "http://your-instance-ip:8189/generate" \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "A cat playing with yarn", "steps": 4}'
+### Quick Health Check
+```bash
+curl http://your-instance-ip:8189/
 ```
+
+### Test Single Image Edit
+```bash
+curl -X POST "http://your-instance-ip:8189/edit-image" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image1_url": "https://picsum.photos/512/512?random=1",
+    "prompt": "Add a beautiful sunset in the background",
+    "steps": 20
+  }'
+```
+
+### Test Multi-Image Edit
+```bash
+curl -X POST "http://your-instance-ip:8189/edit-image" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image1_url": "https://picsum.photos/512/512?random=1",
+    "image2_url": "https://picsum.photos/512/512?random=2",
+    "image3_url": "https://picsum.photos/512/512?random=3", 
+    "prompt": "Combine elements from all three images into a cohesive scene",
+    "steps": 30
+  }'
+```
+
+### Comprehensive Test Suite
+```bash
+# Run the full test suite
+python test_api_multi_image.py
+```
+
+This will test all API endpoints including single-image, multi-image, and debug functionality.
 
 ## Rollback Plan
 
