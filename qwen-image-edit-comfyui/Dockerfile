@@ -49,7 +49,8 @@ RUN . ${VENV_PATH}/bin/activate && \
         requests==2.31.0 \
         pydantic==2.5.0 \
         librosa==0.10.2  \
-        opencv-python-headless 
+        opencv-python-headless \
+        insightface==0.7.3 
 
 
 # --- ComfyUI Installation ---------------------------------------------------

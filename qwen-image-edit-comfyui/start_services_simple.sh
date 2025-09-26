@@ -116,7 +116,7 @@ log "🚀 Launching parallel downloads..."
 download_model_async "$VAE_URL" "${COMFY_DIR}/models/vae/qwen_image_vae.safetensors" "VAE Model" &
 VAE_PID=$!
 
-download_model_async "$QWEN_NUNCHAKU_URL" "${COMFY_DIR}/models/diffusion_models/svdq-int4_r128-qwen-image-edit-2509.safetensors" "Qwen Nunchaku Model" &
+download_model_async "$QWEN_NUNCHAKU_URL" "${COMFY_DIR}/models/diffusion_models/svdq-int4_r128-qwen-image-edit-2509-lightningv2.0-8steps.safetensors" "Qwen Nunchaku Model" &
 QWEN_NUNCHAKU_MODEL_PID=$!
 
 download_model_async "$QWEN_CLIP" "${COMFY_DIR}/models/clip/qwen_2.5_vl_7b_fp8_scaled.safetensors" "CLIP Vision" &
