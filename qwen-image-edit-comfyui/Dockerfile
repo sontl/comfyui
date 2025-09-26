@@ -49,7 +49,7 @@ RUN . ${VENV_PATH}/bin/activate && \
         requests==2.31.0 \
         pydantic==2.5.0 \
         librosa==0.10.2  \
-        opencv-python 
+        opencv-python-headless 
 
 
 # --- ComfyUI Installation ---------------------------------------------------
@@ -96,7 +96,8 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu${UBUNTU_VERSION}
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         python3 python3-dev git curl ca-certificates gpg tini aria2 \
-        xz-utils && \
+        xz-utils libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 \
+        libglib2.0-0 libgl1-mesa-glx && \
     \
     # Add repositories and install Caddy & Tailscale
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg && \
