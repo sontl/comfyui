@@ -4,3 +4,5 @@ websocket-client==1.6.4
 requests==2.31.0
 pydantic==2.5.0
 python-multipart==0.0.6
+huggingface_hub[hf_transfer]
+hf_xet

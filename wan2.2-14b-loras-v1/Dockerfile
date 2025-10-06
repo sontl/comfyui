@@ -42,14 +42,16 @@ RUN python3 -m venv ${VENV_PATH} && \
     find ${VENV_PATH} -name '__pycache__' -type d -exec rm -rf {} + && \
     pip cache purge
 
-# Install API dependencies
+# Install API dependencies with HF faster downloads
 RUN . ${VENV_PATH}/bin/activate && \
     pip install --no-cache-dir \
         fastapi==0.104.1 \
         uvicorn==0.24.0 \
         websocket-client==1.6.4 \
         requests==2.31.0 \
-        pydantic==2.5.0
+        pydantic==2.5.0 \
+        "huggingface_hub[hf_transfer]" \
+        hf_xet
 
 # --- ComfyUI Installation ---------------------------------------------------
 WORKDIR /workspace
@@ -159,7 +161,10 @@ ENV PATH="${VENV_PATH}/bin:${PATH}" \
     COMFY_LAUNCH_ARGS="--listen 0.0.0.0 --port 8188 --disable-auto-launch --preview-method auto" \
     # Network storage settings
     MODELS_BASE_URL="https://huggingface.co" \
-    ENABLE_FAST_DOWNLOAD="true"
+    ENABLE_FAST_DOWNLOAD="true" \
+    # HuggingFace faster downloads
+    HF_HUB_ENABLE_HF_TRANSFER="1" \
+    HF_HUB_ENABLE_HF_XET="1"
 
 # Expose ports
 EXPOSE 8188 8189

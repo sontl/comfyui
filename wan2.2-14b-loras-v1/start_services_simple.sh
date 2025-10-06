@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -u
 
-# WAN 2.2-14B LoRAs Simple Startup Script with Optimized Downloads
+# WAN 2.2-14B LoRAs Simple Startup Script with Ultra-Fast Downloads
 VENV_COMFY=${VENV_COMFY:-/opt/venv}
 COMFY_DIR="/workspace/ComfyUI"
 COMFY_LAUNCH_ARGS=${COMFY_LAUNCH_ARGS:-"--listen 0.0.0.0 --port 8188 --disable-auto-launch --preview-method auto"}
+
+# Enable HuggingFace faster download backends globally
+export HF_HUB_ENABLE_HF_TRANSFER=1
+export HF_HUB_ENABLE_HF_XET=1
 
 # Model URLs
 TEXT_ENCODER_URL="https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp16.safetensors?download=true"
@@ -79,7 +83,7 @@ download_model_fallback() {
     return 1
 }
 
-# Fast HuggingFace CLI download with space-safe fallback
+# Fast HuggingFace CLI download with hf_transfer and hf_xet optimization
 download_with_hf_cli() {
     local url="$1"
     local path="$2"
@@ -108,28 +112,32 @@ download_with_hf_cli() {
         local repo_id="${org}/${repo}"
         local target_dir="$(dirname "$path")"
         
-        # Try modern hf command first (fastest)
+        # Enable faster downloads
+        export HF_HUB_ENABLE_HF_TRANSFER=1
+        export HF_HUB_ENABLE_HF_XET=1
+        
+        # Try modern hf command first (fastest with hf_transfer/hf_xet)
         if command -v hf > /dev/null 2>&1; then
-            log "⬇ Fast download via HF CLI: $name"
+            log "⬇ Ultra-fast download via HF CLI (hf_transfer + hf_xet): $name"
             
             # Create a temporary directory to avoid conflicts
             local temp_dir="${target_dir}/.tmp_$$"
             mkdir -p "$temp_dir"
             
-            # Download to temp directory first
-            if hf download \
+            # Download to temp directory first with faster backends
+            if HF_HUB_ENABLE_HF_TRANSFER=1 HF_HUB_ENABLE_HF_XET=1 hf download \
                 "$repo_id" \
                 "$file_path" \
                 --revision "$branch" \
                 --local-dir "$temp_dir" \
                 --quiet 2>/dev/null; then
                 
-                # Move file to final location
-                local downloaded_file="$temp_dir/$file_path"
+                # Find the downloaded file (it will be in the full path structure)
+                local downloaded_file=$(find "$temp_dir" -name "$(basename "$path")" -type f | head -1)
                 if [ -f "$downloaded_file" ]; then
                     mv "$downloaded_file" "$path" && {
                         rm -rf "$temp_dir"
-                        log "✓ Downloaded: $name (via HF CLI)"
+                        log "✓ Downloaded: $name (via HF CLI ultra-fast)"
                         return 0
                     }
                 fi
@@ -137,28 +145,30 @@ download_with_hf_cli() {
             
             # Cleanup temp directory on failure
             rm -rf "$temp_dir"
-            log "⚠ HF CLI failed for $name, trying legacy..."
+            log "⚠ HF CLI ultra-fast failed for $name, trying legacy..."
         fi
         
-        # Try legacy huggingface-cli
+        # Try legacy huggingface-cli with faster backends
         if command -v huggingface-cli > /dev/null 2>&1; then
-            log "⬇ Downloading via HF CLI (legacy): $name"
+            log "⬇ Downloading via HF CLI (legacy with hf_transfer): $name"
             
             local temp_dir="${target_dir}/.tmp_legacy_$$"
             mkdir -p "$temp_dir"
             
-            if PYTHONWARNINGS="ignore::FutureWarning" huggingface-cli download \
+            if HF_HUB_ENABLE_HF_TRANSFER=1 HF_HUB_ENABLE_HF_XET=1 \
+               PYTHONWARNINGS="ignore::FutureWarning" huggingface-cli download \
                 "$repo_id" \
                 "$file_path" \
                 --revision "$branch" \
                 --local-dir "$temp_dir" \
                 --quiet 2>/dev/null; then
                 
-                local downloaded_file="$temp_dir/$file_path"
+                # Find the downloaded file (it will be in the full path structure)
+                local downloaded_file=$(find "$temp_dir" -name "$(basename "$path")" -type f | head -1)
                 if [ -f "$downloaded_file" ]; then
                     mv "$downloaded_file" "$path" && {
                         rm -rf "$temp_dir"
-                        log "✓ Downloaded: $name (via HF CLI legacy)"
+                        log "✓ Downloaded: $name (via HF CLI legacy with hf_transfer)"
                         return 0
                     }
                 fi
@@ -241,7 +251,7 @@ log "ComfyUI installation verified."
 
 # Step 2: Download models with fast HF CLI + space-safe fallback
 log "Step 2: Starting fast parallel model downloads..."
-download_all_models_parallel 2  # Use 3 concurrent to avoid space issues
+download_all_models_parallel 2  # Use 2 concurrent to avoid space issues
 
 # Step 3: Start services
 log "Step 3: Starting services..."
