@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
-# Simple, robust startup script for FastWAN 2.2-5B
+# WAN 2.2-14B LoRAs Simple Startup Script with Optimized Downloads
 VENV_COMFY=${VENV_COMFY:-/opt/venv}
 COMFY_DIR="/workspace/ComfyUI"
 COMFY_LAUNCH_ARGS=${COMFY_LAUNCH_ARGS:-"--listen 0.0.0.0 --port 8188 --disable-auto-launch --preview-method auto"}
@@ -19,14 +19,220 @@ log() {
 }
 
 # Prevent multiple instances
-if [ -f "/tmp/fastwan.lock" ]; then
+if [ -f "/tmp/wan14b.lock" ]; then
     log "Another instance is running. Exiting."
     exit 0
 fi
-echo $$ > /tmp/fastwan.lock
-trap "rm -f /tmp/fastwan.lock" EXIT
+echo $$ > /tmp/wan14b.lock
+trap "rm -f /tmp/wan14b.lock" EXIT
 
-log "=== FastWAN 2.2-5B Simple Startup ==="
+log "=== WAN 2.2-14B LoRAs Simple Startup ==="
+
+# Optimized download function for HuggingFace safetensors files
+download_model_optimized() {
+    local url="$1"
+    local path="$2"
+    local name="$3"
+    local dir=$(dirname "$path")
+    
+    mkdir -p "$dir"
+    
+    # Check if file exists and is valid
+    if [ -f "$path" ]; then
+        # Verify file is not corrupted (has reasonable size)
+        local size=$(stat -f%z "$path" 2>/dev/null || stat -c%s "$path" 2>/dev/null || echo "0")
+        if [ "$size" -gt 1000000 ]; then  # > 1MB means likely valid
+            log "✓ Model already exists: $name"
+            return 0
+        else
+            log "⚠ Incomplete file detected, removing: $name"
+            rm -f "$path"
+        fi
+    fi
+    
+    log "⬇ Starting download: $name"
+    
+    # Try aria2c first (best performance)
+    if command -v aria2c > /dev/null 2>&1; then
+        aria2c \
+            --max-connection-per-server=16 \
+            --split=16 \
+            --min-split-size=5M \
+            --max-concurrent-downloads=4 \
+            --continue=true \
+            --auto-file-renaming=false \
+            --allow-overwrite=true \
+            --max-tries=10 \
+            --retry-wait=2 \
+            --timeout=120 \
+            --connect-timeout=60 \
+            --lowest-speed-limit=100K \
+            --max-download-limit=0 \
+            --optimize-concurrent-downloads=true \
+            --file-allocation=none \
+            --disk-cache=64M \
+            --piece-length=5M \
+            --stream-piece-selector=inorder \
+            --enable-http-pipelining=true \
+            --http-accept-gzip=true \
+            --dir="$dir" \
+            --out="$(basename "$path")" \
+            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            --header="Accept-Encoding: gzip, deflate" \
+            "$url" 2>&1 | grep -v "Download Progress" && {
+            log "✓ Downloaded: $name"
+            return 0
+        }
+        
+        log "⚠ aria2c failed for $name, trying axel..."
+    fi
+    
+    # Try axel (alternative fast downloader)
+    if command -v axel > /dev/null 2>&1; then
+        axel \
+            -n 16 \
+            -a \
+            --output="$path" \
+            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            --header="Accept-Encoding: gzip, deflate" \
+            "$url" 2>&1 | grep -v "%" && {
+            log "✓ Downloaded: $name (via axel)"
+            return 0
+        }
+        
+        log "⚠ axel failed for $name, trying curl..."
+    fi
+    
+    # Fallback to curl with optimizations
+    curl -L \
+        --retry 5 \
+        --retry-delay 3 \
+        --retry-max-time 3600 \
+        --connect-timeout 60 \
+        --max-time 3600 \
+        --speed-limit 102400 \
+        --speed-time 30 \
+        --tcp-fastopen \
+        --compressed \
+        --parallel \
+        --parallel-max 4 \
+        --keepalive-time 60 \
+        --no-buffer \
+        -C - \
+        --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+        --header "Accept-Encoding: gzip, deflate, br" \
+        --header "Connection: keep-alive" \
+        --progress-bar \
+        -o "$path" \
+        "$url" 2>&1 && {
+        log "✓ Downloaded: $name (via curl)"
+        return 0
+    }
+    
+    log "✗ Failed to download: $name"
+    return 1
+}
+
+# Alternative: Use HuggingFace CLI (often fastest for HF models)
+download_with_hf_cli() {
+    local url="$1"
+    local path="$2"
+    local name="$3"
+    
+    # Extract repo and filename from URL
+    # URL format: https://huggingface.co/ORG/REPO/resolve/main/PATH/FILE
+    if [[ $url =~ huggingface\.co/([^/]+)/([^/]+)/resolve/([^/]+)/(.+) ]]; then
+        local org="${BASH_REMATCH[1]}"
+        local repo="${BASH_REMATCH[2]}"
+        local branch="${BASH_REMATCH[3]}"
+        local file_path="${BASH_REMATCH[4]%\?*}"  # Remove query params
+        
+        local repo_id="${org}/${repo}"
+        
+        if command -v huggingface-cli > /dev/null 2>&1; then
+            log "⬇ Downloading via HF CLI: $name"
+            
+            # Use huggingface-cli download (supports resume and is optimized)
+            huggingface-cli download \
+                "$repo_id" \
+                "$file_path" \
+                --revision "$branch" \
+                --local-dir "$(dirname "$path")" \
+                --local-dir-use-symlinks False \
+                --resume-download && {
+                
+                # Move file to correct location if needed
+                local downloaded_file="$(dirname "$path")/$file_path"
+                if [ -f "$downloaded_file" ] && [ "$downloaded_file" != "$path" ]; then
+                    mv "$downloaded_file" "$path"
+                fi
+                
+                log "✓ Downloaded: $name (via HF CLI)"
+                return 0
+            }
+        fi
+    fi
+    
+    # Fallback to optimized download
+    download_model_optimized "$url" "$path" "$name"
+}
+
+# Enhanced parallel download manager with bandwidth control
+download_all_models_parallel() {
+    local max_concurrent=${1:-4}  # Limit concurrent downloads to avoid overwhelming network
+    
+    log "🚀 Starting parallel downloads (max $max_concurrent concurrent)..."
+    
+    # Array of download tasks
+    declare -a DOWNLOAD_TASKS=(
+        "$TEXT_ENCODER_URL|${COMFY_DIR}/models/text_encoders/umt5_xxl_fp16.safetensors|Text Encoder"
+        "$VAE_URL|${COMFY_DIR}/models/vae/wan_2.1_vae.safetensors|VAE Model"
+        "$HIGH_NOISE_LORA_URL|${COMFY_DIR}/models/loras/high_noise_model.safetensors|High Noise LoRA"
+        "$LOW_NOISE_LORA_URL|${COMFY_DIR}/models/loras/low_noise_model.safetensors|Low Noise LoRA"
+        "$HIGH_NOISE_14B_FP8_UPSCALED|${COMFY_DIR}/models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors|High Noise Model"
+        "$LOW_NOISE_14B_FP8_UPSCALED|${COMFY_DIR}/models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors|Low Noise Model"
+    )
+    
+    local active_jobs=0
+    declare -a job_pids=()
+    
+    for task in "${DOWNLOAD_TASKS[@]}"; do
+        IFS='|' read -r url path name <<< "$task"
+        
+        # Wait if we have too many concurrent downloads
+        while [ $active_jobs -ge $max_concurrent ]; do
+            # Check if any job finished
+            for i in "${!job_pids[@]}"; do
+                if ! kill -0 "${job_pids[$i]}" 2>/dev/null; then
+                    unset 'job_pids[i]'
+                    ((active_jobs--))
+                fi
+            done
+            job_pids=("${job_pids[@]}")  # Reindex array
+            sleep 1
+        done
+        
+        # Start download
+        download_with_hf_cli "$url" "$path" "$name" &
+        job_pids+=($!)
+        ((active_jobs++))
+    done
+    
+    # Wait for all remaining jobs
+    log "⏳ Waiting for downloads to complete..."
+    local success=true
+    for pid in "${job_pids[@]}"; do
+        wait "$pid" || success=false
+    done
+    
+    if [ "$success" = true ]; then
+        log "🎉 All models downloaded successfully!"
+        return 0
+    else
+        log "⚠ Some downloads failed, but continuing..."
+        return 1
+    fi
+}
 
 # Step 1: Verify ComfyUI installation
 log "Step 1: Verifying ComfyUI installation..."
@@ -35,203 +241,33 @@ if [ ! -f "${COMFY_DIR}/main.py" ]; then
     exit 1
 fi
 
-# if [ ! -d "${COMFY_DIR}/custom_nodes/fastwan-moviegen" ]; then
-#     log "⚠ FastWAN custom node not found. Attempting to install at runtime..."
-#     cd "${COMFY_DIR}/custom_nodes"
-#     git clone --depth 1 https://github.com/FNGarvin/fastwan-moviegen.git fastwan-moviegen || {
-#         log "⚠ Failed to clone FastWAN custom node. ComfyUI will run without it."
-#     }
-#     if [ -d "fastwan-moviegen" ] && [ -f "fastwan-moviegen/requirements.txt" ]; then
-#         source "${VENV_COMFY}/bin/activate"
-#         cd fastwan-moviegen
-#         pip install --no-cache-dir -r requirements.txt || log "⚠ FastWAN requirements install failed"
-#         deactivate
-#         cd "${COMFY_DIR}"
-#     fi
-# else
-#     log "✓ FastWAN custom node found."
-# fi
+if [ ! -d "${COMFY_DIR}/custom_nodes/ComfyUI-WAN" ]; then
+    log "⚠ WAN custom node not found. Attempting to install at runtime..."
+    cd "${COMFY_DIR}/custom_nodes"
+    git clone --depth 1 https://github.com/Kijai/ComfyUI-WAN.git ComfyUI-WAN || {
+        log "⚠ Failed to clone WAN custom node. ComfyUI will run without it."
+    }
+    if [ -d "ComfyUI-WAN" ] && [ -f "ComfyUI-WAN/requirements.txt" ]; then
+        source "${VENV_COMFY}/bin/activate"
+        cd ComfyUI-WAN
+        pip install --no-cache-dir -r requirements.txt || log "⚠ WAN requirements install failed"
+        deactivate
+        cd "${COMFY_DIR}"
+    fi
+else
+    log "✓ WAN custom node found."
+fi
 
 log "ComfyUI installation verified."
 
-# Step 2: Download models (async parallel downloads)
-log "Step 2: Starting parallel model downloads..."
+# Step 2: Download models with optimized parallel downloads
+log "Step 2: Starting optimized parallel model downloads..."
+download_all_models_parallel 3  # Use 3 concurrent downloads for optimal performance
 
-# Fast async download function with progress tracking
-download_model_async() {
-    local url="$1"
-    local path="$2"
-    local name="$3"
-    local dir=$(dirname "$path")
-    
-    mkdir -p "$dir"
-    
-    if [ -f "$path" ]; then
-        log "✓ Model already exists: $name"
-        return 0
-    fi
-    
-    log "⬇ Starting download: $name"
-    
-    # Use aria2c with optimized settings for HuggingFace
-    if command -v aria2c > /dev/null 2>&1; then
-        aria2c \
-            --max-connection-per-server=16 \
-            --split=16 \
-            --min-split-size=1M \
-            --max-concurrent-downloads=4 \
-            --continue=true \
-            --auto-file-renaming=false \
-            --allow-overwrite=true \
-            --retry-wait=3 \
-            --max-tries=5 \
-            --timeout=60 \
-            --connect-timeout=30 \
-            --dir="$dir" \
-            --out="$(basename "$path")" \
-            --user-agent="Mozilla/5.0 (compatible; FastWAN/2.2)" \
-            "$url" 2>/dev/null && {
-            log "✓ Downloaded: $name"
-            return 0
-        } || {
-            log "⚠ aria2c failed for $name, trying curl..."
-            curl -L \
-                --retry 3 \
-                --retry-delay 2 \
-                --connect-timeout 30 \
-                --max-time 1800 \
-                --user-agent "Mozilla/5.0 (compatible; FastWAN/2.2)" \
-                --progress-bar \
-                -o "$path" \
-                "$url" 2>/dev/null && {
-                log "✓ Downloaded: $name (via curl)"
-                return 0
-            } || {
-                log "✗ Failed to download: $name"
-                return 1
-            }
-        }
-    else
-        curl -L \
-            --retry 3 \
-            --retry-delay 2 \
-            --connect-timeout 30 \
-            --max-time 1800 \
-            --user-agent "Mozilla/5.0 (compatible; FastWAN/2.2)" \
-            --progress-bar \
-            -o "$path" \
-            "$url" 2>/dev/null && {
-            log "✓ Downloaded: $name"
-            return 0
-        } || {
-            log "✗ Failed to download: $name"
-            return 1
-        }
-    fi
-}
-
-# Start all downloads in parallel
-log "🚀 Launching parallel downloads..."
-
-download_model_async "$TEXT_ENCODER_URL" "${COMFY_DIR}/models/text_encoders/umt5_xxl_fp16.safetensors" "Text Encoder" &
-TEXT_PID=$!
-
-download_model_async "$VAE_URL" "${COMFY_DIR}/models/vae/wan_2.1_vae.safetensors" "VAE Model" &
-VAE_PID=$!
-
-download_model_async "$HIGH_NOISE_LORA_URL" "${COMFY_DIR}/models/loras/high_noise_model.safetensors" "High Noise LoRA" &
-HIGH_NOISE_LORA_PID=$!
-
-download_model_async "$LOW_NOISE_LORA_URL" "${COMFY_DIR}/models/loras/low_noise_model.safetensors" "Low Noise LoRA" &
-LOW_NOISE_LORA_PID=$!
-
-download_model_async "$HIGH_NOISE_14B_FP8_UPSCALED" "${COMFY_DIR}/models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors" "High Noise Model" &
-HIGH_NOISE_PID=$!
-
-download_model_async "$LOW_NOISE_14B_FP8_UPSCALED" "${COMFY_DIR}/models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors" "Low Noise Model" &
-LOW_NOISE_PID=$!
-
-# Wait for all downloads to complete
-log "⏳ Waiting for downloads to complete..."
-DOWNLOAD_SUCCESS=true
-
-wait $TEXT_PID || DOWNLOAD_SUCCESS=false  
-wait $VAE_PID || DOWNLOAD_SUCCESS=false
-wait $HIGH_NOISE_LORA_PID || DOWNLOAD_SUCCESS=false
-wait $LOW_NOISE_LORA_PID || DOWNLOAD_SUCCESS=false
-wait $HIGH_NOISE_PID || DOWNLOAD_SUCCESS=false
-wait $LOW_NOISE_PID || DOWNLOAD_SUCCESS=false
-
-if [ "$DOWNLOAD_SUCCESS" = true ]; then
-    log "🎉 All models downloaded successfully!"
-else
-    log "⚠ Some downloads failed, but continuing startup..."
-fi
-
-# Step 3: Start services
-log "Step 3: Starting services..."
-
-# Set environment variables
-export TORCH_INDUCTOR_FORCE_DISABLE_FP8="1"
-export CUDA_VISIBLE_DEVICES="0"
-export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:512"
-
+# Step 3: Start ComfyUI
+log "Step 3: Starting ComfyUI..."
+cd "${COMFY_DIR}"
 source "${VENV_COMFY}/bin/activate"
 
-# Copy workflow file
-cp /workspace/workflow_api.json "${COMFY_DIR}/" 2>/dev/null || true
-
-# Start API wrapper
-log "Starting API wrapper..."
-cd /workspace
-python3 api_wrapper.py &
-API_PID=$!
-log "API wrapper started (PID: $API_PID)"
-
-# Start ComfyUI
-log "Starting ComfyUI..."
-cd "${COMFY_DIR}"
-python main.py ${COMFY_LAUNCH_ARGS} &
-COMFY_PID=$!
-log "ComfyUI started (PID: $COMFY_PID)"
-
-deactivate
-
-# Start Caddy
-if [ -f "/etc/caddy/Caddyfile" ]; then
-    log "Starting Caddy..."
-    caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
-    CADDY_PID=$!
-    log "Caddy started (PID: $CADDY_PID)"
-fi
-
-# Setup cleanup
-cleanup() {
-    log "Shutting down services..."
-    [ -n "${API_PID:-}" ] && kill -TERM "$API_PID" 2>/dev/null || true
-    [ -n "${COMFY_PID:-}" ] && kill -TERM "$COMFY_PID" 2>/dev/null || true
-    [ -n "${CADDY_PID:-}" ] && kill -TERM "$CADDY_PID" 2>/dev/null || true
-    sleep 5
-    [ -n "${API_PID:-}" ] && kill -KILL "$API_PID" 2>/dev/null || true
-    [ -n "${COMFY_PID:-}" ] && kill -KILL "$COMFY_PID" 2>/dev/null || true
-    [ -n "${CADDY_PID:-}" ] && kill -KILL "$CADDY_PID" 2>/dev/null || true
-    log "Shutdown complete."
-    exit 0
-}
-
-trap cleanup SIGTERM SIGINT
-
-log "=== Startup Complete ==="
-log "ComfyUI: http://localhost:8188"
-log "API: http://localhost:8189"
-log "API Docs: http://localhost:8189/docs"
-
-# Wait for services
-if [ -n "${COMFY_PID:-}" ] && [ -n "${API_PID:-}" ]; then
-    wait -n "$COMFY_PID" "$API_PID"
-    log "A service exited. Shutting down..."
-    cleanup
-else
-    log "No services started. Exiting."
-    exit 1
-fi
+log "🚀 Launching ComfyUI with args: $COMFY_LAUNCH_ARGS"
+exec python main.py $COMFY_LAUNCH_ARGS
