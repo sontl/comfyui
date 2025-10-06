@@ -241,22 +241,22 @@ if [ ! -f "${COMFY_DIR}/main.py" ]; then
     exit 1
 fi
 
-if [ ! -d "${COMFY_DIR}/custom_nodes/ComfyUI-WAN" ]; then
-    log "⚠ WAN custom node not found. Attempting to install at runtime..."
-    cd "${COMFY_DIR}/custom_nodes"
-    git clone --depth 1 https://github.com/Kijai/ComfyUI-WAN.git ComfyUI-WAN || {
-        log "⚠ Failed to clone WAN custom node. ComfyUI will run without it."
-    }
-    if [ -d "ComfyUI-WAN" ] && [ -f "ComfyUI-WAN/requirements.txt" ]; then
-        source "${VENV_COMFY}/bin/activate"
-        cd ComfyUI-WAN
-        pip install --no-cache-dir -r requirements.txt || log "⚠ WAN requirements install failed"
-        deactivate
-        cd "${COMFY_DIR}"
-    fi
-else
-    log "✓ WAN custom node found."
-fi
+# if [ ! -d "${COMFY_DIR}/custom_nodes/ComfyUI-WAN" ]; then
+#     log "⚠ WAN custom node not found. Attempting to install at runtime..."
+#     cd "${COMFY_DIR}/custom_nodes"
+#     git clone --depth 1 https://github.com/Kijai/ComfyUI-WAN.git ComfyUI-WAN || {
+#         log "⚠ Failed to clone WAN custom node. ComfyUI will run without it."
+#     }
+#     if [ -d "ComfyUI-WAN" ] && [ -f "ComfyUI-WAN/requirements.txt" ]; then
+#         source "${VENV_COMFY}/bin/activate"
+#         cd ComfyUI-WAN
+#         pip install --no-cache-dir -r requirements.txt || log "⚠ WAN requirements install failed"
+#         deactivate
+#         cd "${COMFY_DIR}"
+#     fi
+# else
+#     log "✓ WAN custom node found."
+# fi
 
 log "ComfyUI installation verified."
 
