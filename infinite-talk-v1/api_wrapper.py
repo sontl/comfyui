@@ -92,14 +92,18 @@ def download_file(url: str, filename: str) -> str:
 
 def modify_workflow(workflow, request: GenerateRequest):
     """Modify workflow with user parameters"""
-    job_id = str(uuid.uuid4())
+    timestamp = int(time.time())
     
-    # Download image and audio files
-    image_filename = f"image_{job_id}.jpg"
-    audio_filename = f"audio_{job_id}.mp3"
+    # Download image and audio files with timestamp-based names
+    image_filename = f"image_{timestamp}.jpg"
+    audio_filename = f"audio_{timestamp}.mp3"
     
     downloaded_image = download_file(request.image_url, image_filename)
     downloaded_audio = download_file(request.audio_url, audio_filename)
+    
+    # Generate filename_prefix from image filename (without extension) + timestamp
+    image_base = Path(downloaded_image).stem  # e.g., "image_1234567890"
+    filename_prefix = f"{image_base}_{timestamp}"
     
     # Update image input (node 284 - LoadImage)
     workflow["284"]["inputs"]["image"] = downloaded_image
@@ -127,31 +131,38 @@ def modify_workflow(workflow, request: GenerateRequest):
     workflow["194"]["inputs"]["fps"] = request.fps
     
     # Update output filename and frame rate (node 131 - VHS_VideoCombine)
-    workflow["131"]["inputs"]["filename_prefix"] = job_id
+    workflow["131"]["inputs"]["filename_prefix"] = filename_prefix
     workflow["131"]["inputs"]["frame_rate"] = request.fps
     
-    return workflow, job_id
+    return workflow, filename_prefix
 
-def queue_workflow(workflow, client_id: str):
-    """Queue workflow in ComfyUI with the provided client_id"""
+def queue_workflow(workflow):
+    """Queue workflow in ComfyUI and return the prompt_id"""
     try:
-        payload = {"prompt": workflow, "client_id": client_id}
+        payload = {"prompt": workflow}
         response = requests.post(f"{COMFYUI_URL}/prompt", json=payload)
         response.raise_for_status()
-        return response.json()
+        result = response.json()
+        return result.get("prompt_id")
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Failed to queue workflow: {str(e)}")
 
-def wait_for_completion(prompt_id: str, job_id: str):
+def wait_for_completion(job_id: str, filename_prefix: str):
     """Wait for workflow completion using WebSocket.
     ComfyUI sends both JSON text frames and binary frames (e.g. previews). We must
     ignore non-text frames to avoid JSON decode errors.
+    
+    Args:
+        job_id: ComfyUI's prompt_id
+        filename_prefix: The filename prefix used for output files
     """
     try:
-        ws_url = f"ws://localhost:8188/ws?clientId={job_id}"
+        # Use a unique client_id for WebSocket connection
+        client_id = str(uuid.uuid4())
+        ws_url = f"ws://localhost:8188/ws?clientId={client_id}"
         ws = websocket.create_connection(ws_url)
 
-        job_status[job_id] = {"status": "processing", "progress": 0}
+        job_status[job_id] = {"status": "processing", "progress": 0, "filename_prefix": filename_prefix}
 
         while True:
             # Use low-level frame API to detect text vs binary frames
@@ -179,10 +190,11 @@ def wait_for_completion(prompt_id: str, job_id: str):
 
                 elif msg_type == "executed":
                     d = data.get("data", {})
-                    if d.get("prompt_id") == prompt_id:
+                    if d.get("prompt_id") == job_id:
                         # Node 131 is VHS_VideoCombine - the final video output node
                         if d.get("node") == "131":
-                            job_status[job_id] = {"status": "completed", "progress": 100}
+                            job_status[job_id]["status"] = "completed"
+                            job_status[job_id]["progress"] = 100
                             break
 
                 elif msg_type == "execution_error":
@@ -214,39 +226,27 @@ def find_output_video(job_id: str) -> Optional[str]:
     """Find the generated video file.
     
     The workflow uses VHS_VideoCombine (node 131) which saves videos with the filename_prefix.
-    Videos are typically saved in OUTPUT_DIR with the job_id as prefix.
+    Videos are typically saved in OUTPUT_DIR with the filename_prefix.
     """
     output_path = Path(OUTPUT_DIR)
     
     if not output_path.exists():
         return None
     
-    # Search for video files containing the job_id
+    # Get the filename_prefix from job status
+    if job_id not in job_status:
+        return None
+    
+    filename_prefix = job_status[job_id].get("filename_prefix", "")
+    if not filename_prefix:
+        return None
+    
+    # Search for video files containing the filename_prefix
     # Check common video extensions
     for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv", ".gif"]:
         # Search recursively in output directory
-        for file_path in output_path.rglob(f"*{job_id}*{ext}"):
+        for file_path in output_path.rglob(f"{filename_prefix}*{ext}"):
             return str(file_path)
-        
-        # Also search for recent files (within last 5 minutes) as fallback
-        # This helps if the workflow doesn't properly tag outputs with job_id
-    
-    # If no video found with job_id, look for the most recent video file
-    # This is a fallback for workflows that don't tag outputs
-    try:
-        video_files = []
-        for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv"]:
-            video_files.extend(output_path.rglob(f"*{ext}"))
-        
-        if video_files:
-            # Sort by modification time, newest first
-            video_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            # Return the newest file if it was created recently (within 5 minutes)
-            newest = video_files[0]
-            if time.time() - newest.stat().st_mtime < 300:  # 5 minutes
-                return str(newest)
-    except Exception:
-        pass
     
     return None
 
@@ -265,17 +265,19 @@ async def generate_video(request: GenerateRequest, background_tasks: BackgroundT
     
     # Load and modify workflow
     workflow = load_workflow()
-    modified_workflow, job_id = modify_workflow(workflow, request)
+    modified_workflow, filename_prefix = modify_workflow(workflow, request)
     
-    # Queue workflow with client_id matching websocket listener (job_id)
-    queue_response = queue_workflow(modified_workflow, job_id)
-    prompt_id = queue_response["prompt_id"]
+    # Queue workflow and get ComfyUI's prompt_id as our job_id
+    job_id = queue_workflow(modified_workflow)
+    
+    if not job_id:
+        raise HTTPException(status_code=500, detail="Failed to get job_id from ComfyUI")
     
     # Initialize job status
-    job_status[job_id] = {"status": "queued", "prompt_id": prompt_id, "progress": 0}
+    job_status[job_id] = {"status": "queued", "progress": 0, "filename_prefix": filename_prefix}
     
     # Start background task to monitor completion
-    background_tasks.add_task(wait_for_completion, prompt_id, job_id)
+    background_tasks.add_task(wait_for_completion, job_id, filename_prefix)
     
     return GenerateResponse(
         job_id=job_id,
