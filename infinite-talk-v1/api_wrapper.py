@@ -2,6 +2,18 @@
 """
 FastAPI wrapper for ComfyUI InfiniteTalk workflow
 Provides a simple REST API to generate talking videos from image and audio
+
+WORKFLOW STRUCTURE:
+- Node 284: LoadImage - Input image
+- Node 125: LoadAudio - Input audio
+- Node 281: ImageResizeKJv2 - Resize image to target dimensions
+- Node 245/246: INTConstant - Width/Height values (feed into node 281)
+- Node 270: INTConstant - Max frames value
+- Node 241: WanVideoTextEncodeCached - Text prompts
+- Node 128: WanVideoSampler - Sampling parameters (seed, steps, cfg)
+- Node 194: MultiTalkWav2VecEmbeds - Audio processing (fps)
+- Node 130: WanVideoDecode - Final decode
+- Node 131: VHS_VideoCombine - Video output with filename_prefix and frame_rate
 """
 
 import json
@@ -23,7 +35,7 @@ import uvicorn
 
 # Configuration
 COMFYUI_URL = "http://localhost:8188"
-WORKFLOW_PATH = "/workspace/workflow-infinitetalk-api.son.json"
+WORKFLOW_PATH = "/workspace/workflow_api.json"
 OUTPUT_DIR = "/workspace/ComfyUI/output"
 INPUT_DIR = "/workspace/ComfyUI/input"
 API_PORT = 8189
@@ -31,15 +43,15 @@ API_PORT = 8189
 class GenerateRequest(BaseModel):
     image_url: str
     audio_url: str
-    prompt: Optional[str] = "the woman is singing"
-    negative_prompt: Optional[str] = "low quality, worst quality, 色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
-    seed: Optional[int] = 3
-    steps: Optional[int] = 5
+    prompt: Optional[str] = "The video shows a young man singing a song."
+    negative_prompt: Optional[str] = "bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+    seed: Optional[int] = 2
+    steps: Optional[int] = 6
     cfg: Optional[float] = 1.0
-    width: Optional[int] = 960
-    height: Optional[int] = 528
-    max_frames: Optional[int] = 101
-    fps: Optional[int] = 20
+    width: Optional[int] = 450
+    height: Optional[int] = 800
+    max_frames: Optional[int] = 10000
+    fps: Optional[int] = 25
 
 class GenerateResponse(BaseModel):
     job_id: str
@@ -92,9 +104,8 @@ def modify_workflow(workflow, request: GenerateRequest):
     # Update image input (node 284 - LoadImage)
     workflow["284"]["inputs"]["image"] = downloaded_image
     
-    # Update audio inputs (nodes 125 and 343 - LoadAudio)
+    # Update audio input (node 125 - LoadAudio)
     workflow["125"]["inputs"]["audio"] = downloaded_audio
-    workflow["343"]["inputs"]["audio"] = downloaded_audio
     
     # Update text prompts (node 241 - WanVideoTextEncodeCached)
     workflow["241"]["inputs"]["positive_prompt"] = request.prompt
@@ -105,18 +116,19 @@ def modify_workflow(workflow, request: GenerateRequest):
     workflow["128"]["inputs"]["steps"] = request.steps
     workflow["128"]["inputs"]["cfg"] = request.cfg
     
-    # Update dimensions (nodes 339, 340 - INTConstant)
-    workflow["339"]["inputs"]["value"] = request.width  # Width
-    workflow["340"]["inputs"]["value"] = request.height  # Height
+    # Update dimensions (nodes 245, 246 - Width/Height constants)
+    workflow["245"]["inputs"]["value"] = request.width  # Width
+    workflow["246"]["inputs"]["value"] = request.height  # Height
     
-    # Update max frames (node 341 - INTConstant)
-    workflow["341"]["inputs"]["value"] = request.max_frames
+    # Update max frames (node 270 - Max frames constant)
+    workflow["270"]["inputs"]["value"] = request.max_frames
     
-    # Update FPS in video combine (node 131 - VHS_VideoCombine)
+    # Update FPS in MultiTalkWav2VecEmbeds (node 194)
+    workflow["194"]["inputs"]["fps"] = request.fps
+    
+    # Update output filename and frame rate (node 131 - VHS_VideoCombine)
+    workflow["131"]["inputs"]["filename_prefix"] = job_id
     workflow["131"]["inputs"]["frame_rate"] = request.fps
-    
-    # Update filename prefix for output
-    workflow["131"]["inputs"]["filename_prefix"] = f"InfiniteTalk/api_{job_id}"
     
     return workflow, job_id
 
@@ -168,7 +180,7 @@ def wait_for_completion(prompt_id: str, job_id: str):
                 elif msg_type == "executed":
                     d = data.get("data", {})
                     if d.get("prompt_id") == prompt_id:
-                        # Final node is VHS_VideoCombine (id "131") in this workflow
+                        # Node 131 is VHS_VideoCombine - the final video output node
                         if d.get("node") == "131":
                             job_status[job_id] = {"status": "completed", "progress": 100}
                             break
@@ -199,30 +211,42 @@ def wait_for_completion(prompt_id: str, job_id: str):
         job_status[job_id] = {"status": "error", "error": str(e)}
 
 def find_output_video(job_id: str) -> Optional[str]:
-    """Find the generated video file"""
+    """Find the generated video file.
+    
+    The workflow uses VHS_VideoCombine (node 131) which saves videos with the filename_prefix.
+    Videos are typically saved in OUTPUT_DIR with the job_id as prefix.
+    """
     output_path = Path(OUTPUT_DIR)
     
-    # The filename pattern is set in the workflow as "InfiniteTalk/api_{job_id}"
-    # ComfyUI typically saves to subdirectories based on the prefix
-    infinitetalk_dir = output_path / "InfiniteTalk"
+    if not output_path.exists():
+        return None
     
-    # Look for video files with the job ID in both root and InfiniteTalk subdirectory
-    search_paths = [output_path, infinitetalk_dir]
-    pattern = f"api_{job_id}"
+    # Search for video files containing the job_id
+    # Check common video extensions
+    for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv", ".gif"]:
+        # Search recursively in output directory
+        for file_path in output_path.rglob(f"*{job_id}*{ext}"):
+            return str(file_path)
+        
+        # Also search for recent files (within last 5 minutes) as fallback
+        # This helps if the workflow doesn't properly tag outputs with job_id
     
-    for search_path in search_paths:
-        if not search_path.exists():
-            continue
-            
-        # Look for video files with the job ID
+    # If no video found with job_id, look for the most recent video file
+    # This is a fallback for workflows that don't tag outputs
+    try:
+        video_files = []
         for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv"]:
-            # Try exact pattern match first
-            for file_path in search_path.glob(f"*{pattern}*{ext}"):
-                return str(file_path)
-            
-            # Also try without the "api_" prefix in case ComfyUI strips it
-            for file_path in search_path.glob(f"*{job_id}*{ext}"):
-                return str(file_path)
+            video_files.extend(output_path.rglob(f"*{ext}"))
+        
+        if video_files:
+            # Sort by modification time, newest first
+            video_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            # Return the newest file if it was created recently (within 5 minutes)
+            newest = video_files[0]
+            if time.time() - newest.stat().st_mtime < 300:  # 5 minutes
+                return str(newest)
+    except Exception:
+        pass
     
     return None
 

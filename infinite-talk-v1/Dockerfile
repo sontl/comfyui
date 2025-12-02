@@ -51,11 +51,14 @@ RUN . ${VENV_PATH}/bin/activate && \
         requests==2.31.0 \
         pydantic==2.5.0 \
         librosa==0.10.2 \
-        moviepy
+        moviepy \
+        hf_transfer
 
 
 # --- ComfyUI Installation ---------------------------------------------------
 WORKDIR /workspace
+# Cache bust for git clones - pass --build-arg CACHEBUST=$(date +%s) to force rebuild
+# ARG CACHEBUST=1
 RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ComfyUI && \
     cd ComfyUI && \
     . ${VENV_PATH}/bin/activate && \
@@ -84,6 +87,18 @@ RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ComfyUI &&
         fi && \
         cd ..; \
     fi && \
+
+    git clone --depth 1 https://github.com/kijai/ComfyUI-MelBandRoFormer.git || echo "ComfyUI-MelBandRoFormer custom node clone failed, continuing..." && \
+    if [ -d "ComfyUI-MelBandRoFormer" ]; then \
+        cd ComfyUI-MelBandRoFormer && \
+        if [ -f "requirements.txt" ]; then \
+            pip install --no-cache-dir -r requirements.txt || echo "ComfyUI-MelBandRoFormer requirements install failed, continuing..."; \
+        else \
+            echo "No requirements.txt found for ComfyUI-MelBandRoFormer custom node, skipping..."; \
+        fi && \
+        cd ..; \
+    fi && \
+    
     git clone --depth 1 https://github.com/orssorbit/ComfyUI-wanBlockswap.git wanBlockSwap || echo "wanBlockSwap custom node clone failed, continuing..." && \
     if [ -d "wanBlockSwap" ]; then \
         cd wanBlockSwap && \
@@ -147,7 +162,8 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu${UBUNTU_VERSION}
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         python3 python3-dev git curl ca-certificates gpg tini aria2 \
-        xz-utils && \
+        xz-utils \
+        libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev && \
     # Install static ffmpeg build with NVIDIA codec support
     cd /tmp && \
     curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz -o ffmpeg.tar.xz && \
