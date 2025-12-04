@@ -92,18 +92,14 @@ def download_file(url: str, filename: str) -> str:
 
 def modify_workflow(workflow, request: GenerateRequest):
     """Modify workflow with user parameters"""
-    timestamp = int(time.time())
+    job_id = str(uuid.uuid4())
     
-    # Download image and audio files with timestamp-based names
-    image_filename = f"image_{timestamp}.jpg"
-    audio_filename = f"audio_{timestamp}.mp3"
+    # Download image and audio files
+    image_filename = f"image_{job_id}.jpg"
+    audio_filename = f"audio_{job_id}.mp3"
     
     downloaded_image = download_file(request.image_url, image_filename)
     downloaded_audio = download_file(request.audio_url, audio_filename)
-    
-    # Generate filename_prefix from image filename (without extension) + timestamp
-    image_base = Path(downloaded_image).stem  # e.g., "image_1234567890"
-    filename_prefix = f"{image_base}_{timestamp}"
     
     # Update image input (node 284 - LoadImage)
     workflow["284"]["inputs"]["image"] = downloaded_image
@@ -131,38 +127,31 @@ def modify_workflow(workflow, request: GenerateRequest):
     workflow["194"]["inputs"]["fps"] = request.fps
     
     # Update output filename and frame rate (node 131 - VHS_VideoCombine)
-    workflow["131"]["inputs"]["filename_prefix"] = filename_prefix
+    workflow["131"]["inputs"]["filename_prefix"] = job_id
     workflow["131"]["inputs"]["frame_rate"] = request.fps
     
-    return workflow, filename_prefix
+    return workflow, job_id
 
-def queue_workflow(workflow):
-    """Queue workflow in ComfyUI and return the prompt_id"""
+def queue_workflow(workflow, client_id: str):
+    """Queue workflow in ComfyUI with the provided client_id"""
     try:
-        payload = {"prompt": workflow}
+        payload = {"prompt": workflow, "client_id": client_id}
         response = requests.post(f"{COMFYUI_URL}/prompt", json=payload)
         response.raise_for_status()
-        result = response.json()
-        return result.get("prompt_id")
+        return response.json()
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Failed to queue workflow: {str(e)}")
 
-def wait_for_completion(job_id: str, filename_prefix: str):
+def wait_for_completion(prompt_id: str, job_id: str):
     """Wait for workflow completion using WebSocket.
     ComfyUI sends both JSON text frames and binary frames (e.g. previews). We must
     ignore non-text frames to avoid JSON decode errors.
-    
-    Args:
-        job_id: ComfyUI's prompt_id
-        filename_prefix: The filename prefix used for output files
     """
     try:
-        # Use a unique client_id for WebSocket connection
-        client_id = str(uuid.uuid4())
-        ws_url = f"ws://localhost:8188/ws?clientId={client_id}"
+        ws_url = f"ws://localhost:8188/ws?clientId={job_id}"
         ws = websocket.create_connection(ws_url)
 
-        job_status[job_id] = {"status": "processing", "progress": 0, "filename_prefix": filename_prefix}
+        job_status[job_id] = {"status": "processing", "progress": 0}
 
         while True:
             # Use low-level frame API to detect text vs binary frames
@@ -190,11 +179,10 @@ def wait_for_completion(job_id: str, filename_prefix: str):
 
                 elif msg_type == "executed":
                     d = data.get("data", {})
-                    if d.get("prompt_id") == job_id:
+                    if d.get("prompt_id") == prompt_id:
                         # Node 131 is VHS_VideoCombine - the final video output node
                         if d.get("node") == "131":
-                            job_status[job_id]["status"] = "completed"
-                            job_status[job_id]["progress"] = 100
+                            job_status[job_id] = {"status": "completed", "progress": 100}
                             break
 
                 elif msg_type == "execution_error":
@@ -226,27 +214,50 @@ def find_output_video(job_id: str) -> Optional[str]:
     """Find the generated video file.
     
     The workflow uses VHS_VideoCombine (node 131) which saves videos with the filename_prefix.
-    Videos are typically saved in OUTPUT_DIR with the filename_prefix.
+    Videos are typically saved in OUTPUT_DIR with the job_id as prefix.
+    
+    IMPORTANT: The workflow outputs TWO versions:
+    - {job_id}_00001.mp4 (without audio)
+    - {job_id}_00001-audio.mp4 (with audio) <- WE WANT THIS ONE
     """
     output_path = Path(OUTPUT_DIR)
     
     if not output_path.exists():
         return None
     
-    # Get the filename_prefix from job status
-    if job_id not in job_status:
-        return None
-    
-    filename_prefix = job_status[job_id].get("filename_prefix", "")
-    if not filename_prefix:
-        return None
-    
-    # Search for video files containing the filename_prefix
-    # Check common video extensions
-    for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv", ".gif"]:
-        # Search recursively in output directory
-        for file_path in output_path.rglob(f"{filename_prefix}*{ext}"):
+    # PRIORITY 1: Search for video files with "-audio" suffix (the version with audio)
+    for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv"]:
+        for file_path in output_path.rglob(f"*{job_id}*-audio{ext}"):
             return str(file_path)
+    
+    # PRIORITY 2: Search for any video files containing the job_id
+    for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv", ".gif"]:
+        for file_path in output_path.rglob(f"*{job_id}*{ext}"):
+            # Skip files without "-audio" if we're still looking
+            # (this is a fallback in case the naming convention changes)
+            return str(file_path)
+    
+    # PRIORITY 3: If no video found with job_id, look for the most recent video file with audio
+    try:
+        video_files = []
+        for ext in [".mp4", ".avi", ".mov", ".webm", ".mkv"]:
+            # Prioritize files with "-audio" in the name
+            audio_files = list(output_path.rglob(f"*-audio{ext}"))
+            video_files.extend(audio_files)
+            
+            # Also add other video files as fallback
+            if not audio_files:
+                video_files.extend(output_path.rglob(f"*{ext}"))
+        
+        if video_files:
+            # Sort by modification time, newest first
+            video_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            # Return the newest file if it was created recently (within 5 minutes)
+            newest = video_files[0]
+            if time.time() - newest.stat().st_mtime < 300:  # 5 minutes
+                return str(newest)
+    except Exception:
+        pass
     
     return None
 
@@ -265,19 +276,17 @@ async def generate_video(request: GenerateRequest, background_tasks: BackgroundT
     
     # Load and modify workflow
     workflow = load_workflow()
-    modified_workflow, filename_prefix = modify_workflow(workflow, request)
+    modified_workflow, job_id = modify_workflow(workflow, request)
     
-    # Queue workflow and get ComfyUI's prompt_id as our job_id
-    job_id = queue_workflow(modified_workflow)
-    
-    if not job_id:
-        raise HTTPException(status_code=500, detail="Failed to get job_id from ComfyUI")
+    # Queue workflow with client_id matching websocket listener (job_id)
+    queue_response = queue_workflow(modified_workflow, job_id)
+    prompt_id = queue_response["prompt_id"]
     
     # Initialize job status
-    job_status[job_id] = {"status": "queued", "progress": 0, "filename_prefix": filename_prefix}
+    job_status[job_id] = {"status": "queued", "prompt_id": prompt_id, "progress": 0}
     
     # Start background task to monitor completion
-    background_tasks.add_task(wait_for_completion, job_id, filename_prefix)
+    background_tasks.add_task(wait_for_completion, prompt_id, job_id)
     
     return GenerateResponse(
         job_id=job_id,
@@ -297,9 +306,30 @@ async def get_job_status(job_id: str):
     if status["status"] == "completed":
         video_path = find_output_video(job_id)
         if video_path and os.path.exists(video_path):
-            status["video_ready"] = True
-            status["download_url"] = f"/download/{job_id}"
-            status["video_path"] = video_path
+            # Wait a moment to ensure file is fully written and flushed
+            await asyncio.sleep(1)
+            
+            # Verify file size is non-zero and stable
+            try:
+                file_size = os.path.getsize(video_path)
+                if file_size > 0:
+                    # Wait a bit more and check if size is stable (file writing complete)
+                    await asyncio.sleep(0.5)
+                    new_size = os.path.getsize(video_path)
+                    if new_size == file_size:
+                        status["video_ready"] = True
+                        status["download_url"] = f"/download/{job_id}"
+                        status["video_path"] = video_path
+                        status["file_size"] = file_size
+                    else:
+                        status["video_ready"] = False
+                        status["message"] = "Video file still being written"
+                else:
+                    status["video_ready"] = False
+                    status["message"] = "Video file is empty"
+            except OSError as e:
+                status["video_ready"] = False
+                status["message"] = f"Error accessing video file: {str(e)}"
         else:
             status["video_ready"] = False
             status["message"] = "Video generation completed but file not found"
@@ -307,10 +337,16 @@ async def get_job_status(job_id: str):
             await asyncio.sleep(1)
             video_path = find_output_video(job_id)
             if video_path and os.path.exists(video_path):
-                status["video_ready"] = True
-                status["download_url"] = f"/download/{job_id}"
-                status["video_path"] = video_path
-                status["message"] = "Video found after retry"
+                try:
+                    file_size = os.path.getsize(video_path)
+                    if file_size > 0:
+                        status["video_ready"] = True
+                        status["download_url"] = f"/download/{job_id}"
+                        status["video_path"] = video_path
+                        status["file_size"] = file_size
+                        status["message"] = "Video found after retry"
+                except OSError:
+                    pass
     
     return status
 
@@ -345,10 +381,17 @@ async def download_video(job_id: str):
     }
     media_type = media_type_map.get(file_ext.lower(), "video/mp4")
     
+    # Wait a moment to ensure file is fully written
+    await asyncio.sleep(0.5)
+    
     return FileResponse(
         video_path,
         media_type=media_type,
-        filename=filename
+        filename=filename,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
     )
 
 @app.get("/jobs")
