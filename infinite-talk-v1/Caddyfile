@@ -11,6 +11,23 @@
 		reverse_proxy 127.0.0.1:8188
 	}
 
+	# ── API Wrapper endpoints (generate, status, download, etc.) ──────────────
+	handle /generate* {
+		reverse_proxy 127.0.0.1:8189
+	}
+	handle /status/* {
+		reverse_proxy 127.0.0.1:8189
+	}
+	handle /download/* {
+		reverse_proxy 127.0.0.1:8189
+	}
+	handle /jobs* {
+		reverse_proxy 127.0.0.1:8189
+	}
+	handle /debug/* {
+		reverse_proxy 127.0.0.1:8189
+	}
+
 	# ── ComfyUI APIs & WebSocket (no prefix strip) ─────────────────────────────
 	handle /api/* {
 		reverse_proxy 127.0.0.1:8188
