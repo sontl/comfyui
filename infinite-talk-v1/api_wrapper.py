@@ -48,6 +48,8 @@ class GenerateRequest(BaseModel):
     seed: Optional[int] = 2
     steps: Optional[int] = 6
     cfg: Optional[float] = 1.0
+    shift: Optional[int] = 5
+    scheduler: Optional[str] = "lcm"
     width: Optional[int] = 450
     height: Optional[int] = 800
     max_frames: Optional[int] = 10000
@@ -115,6 +117,8 @@ def modify_workflow(workflow, request: GenerateRequest):
     workflow["128"]["inputs"]["seed"] = request.seed
     workflow["128"]["inputs"]["steps"] = request.steps
     workflow["128"]["inputs"]["cfg"] = request.cfg
+    workflow["128"]["inputs"]["shift"] = request.shift
+    workflow["128"]["inputs"]["scheduler"] = request.scheduler
     
     # Update dimensions (nodes 245, 246 - Width/Height constants)
     workflow["245"]["inputs"]["value"] = request.width  # Width

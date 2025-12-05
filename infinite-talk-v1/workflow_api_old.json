@@ -36,7 +36,7 @@
   },
   "125": {
     "inputs": {
-      "audio": "The Cabin on Christmas Eve-[AudioTrimmer.com].mp3",
+      "audio": "input-audio (mp3cut.net) (3).wav",
       "audioUI": ""
     },
     "class_type": "LoadAudio",
@@ -46,12 +46,12 @@
   },
   "128": {
     "inputs": {
-      "steps": 4,
+      "steps": 6,
       "cfg": 1.0000000000000002,
-      "shift": 5,
+      "shift": 11.000000000000002,
       "seed": 2,
       "force_offload": true,
-      "scheduler": "lcm",
+      "scheduler": "dpm++_sde",
       "riflex_freq_index": 0,
       "denoise_strength": 1,
       "batched_cfg": false,
@@ -142,7 +142,7 @@
   },
   "134": {
     "inputs": {
-      "blocks_to_swap": 12,
+      "blocks_to_swap": 20,
       "offload_img_emb": false,
       "offload_txt_emb": false,
       "use_non_blocking": true,
@@ -279,7 +279,7 @@
     "inputs": {
       "model_name": "umt5_xxl_fp16.safetensors",
       "precision": "bf16",
-      "positive_prompt": "the girl talking calmly, with a relaxing body language.\n\n",
+      "positive_prompt": "The video shows a young man singing a song.",
       "negative_prompt": "bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards",
       "quantization": "disabled",
       "use_disk_cache": false,
@@ -292,7 +292,7 @@
   },
   "245": {
     "inputs": {
-      "value": 450
+      "value": 800
     },
     "class_type": "INTConstant",
     "_meta": {
@@ -301,7 +301,7 @@
   },
   "246": {
     "inputs": {
-      "value": 800
+      "value": 450
     },
     "class_type": "INTConstant",
     "_meta": {
@@ -345,7 +345,7 @@
   },
   "284": {
     "inputs": {
-      "image": "Image_202511231503 (1).jpeg"
+      "image": "image (9).png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -366,7 +366,7 @@
   },
   "293": {
     "inputs": {
-      "preview": "463",
+      "preview": "373",
       "source": [
         "194",
         2
